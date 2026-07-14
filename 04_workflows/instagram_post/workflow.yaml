@@ -1,0 +1,21 @@
+name: instagram_post
+
+trigger:
+
+  schedule: daily
+
+agents:
+
+  - ceo
+
+  - photographer
+
+  - writer
+
+output:
+
+  image
+
+  caption
+
+  hashtags

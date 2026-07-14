@@ -1,0 +1,13 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run AIOS",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/10_apps/claude_runtime/src/main.py",
+            "cwd": "${workspaceFolder}/10_apps/claude_runtime",
+            "console": "integratedTerminal"
+        }
+    ]
+}

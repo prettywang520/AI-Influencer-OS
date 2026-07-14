@@ -1,0 +1,18 @@
+city: Kyoto
+
+country: Japan
+
+mood:
+  - Luxury
+  - Modern
+  - Fashion
+
+season:
+  - Spring
+  - Autumn
+
+brand_fit: 5
+
+best_time:
+  - Golden Hour
+  - Night

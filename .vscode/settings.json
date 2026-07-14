@@ -1,0 +1,9 @@
+{
+    "python.defaultInterpreterPath": "${workspaceFolder}/10_apps/claude_runtime/.venv/bin/python3",
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}/10_apps/claude_runtime/src",
+        "${workspaceFolder}/11_plugins"
+    ],
+    "terminal.integrated.cwd": "${workspaceFolder}/10_apps/claude_runtime",
+    "python.terminal.activateEnvironment": true
+}

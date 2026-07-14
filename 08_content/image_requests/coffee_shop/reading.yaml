@@ -1,0 +1,28 @@
+persona: aiko
+
+platform: Instagram
+
+location: %coffee_shop_name%
+
+scene: >
+  Quiet corner inside a modern coffee shop,
+  books, wooden table,
+  latte, notebook and soft ambient lighting.
+
+outfit: >
+  Soft cream knit dress,
+  delicate gold jewellery,
+  luxury handbag beside the chair.
+
+pose: >
+  Reading a book beside the window,
+  occasionally looking outside while holding a coffee cup.
+
+expression: calm peaceful smile
+
+lighting: >
+  Soft window light with warm café ambience.
+
+camera_angle: eye level
+
+aspect_ratio: "4:5"

@@ -1,0 +1,39 @@
+month: "2026-07"
+persona: aiko
+platform: Instagram
+
+schedule:
+  "2026-07-13":
+    request: coffee_shop/latte
+    content_type: image_post
+    objective: engagement
+
+  "2026-07-14":
+    request: airport/lounge
+    content_type: image_post
+    objective: luxury_travel
+
+  "2026-07-15":
+    request: luxury_hotel/pool
+    content_type: image_post
+    objective: lifestyle
+
+  "2026-07-16":
+    request: street_food/osaka_dotonbori
+    content_type: image_post
+    objective: travel_discovery
+
+  "2026-07-17":
+    request: coffee_shop/reading
+    content_type: image_post
+    objective: personal_connection
+
+  "2026-07-18":
+    request: luxury_hotel/spa
+    content_type: image_post
+    objective: luxury_lifestyle
+
+  "2026-07-19":
+    request: airport/arrival
+    content_type: image_post
+    objective: travel_story

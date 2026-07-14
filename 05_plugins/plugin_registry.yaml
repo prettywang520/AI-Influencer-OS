@@ -1,0 +1,17 @@
+instagram:
+  enabled: true
+
+onlyfans:
+  enabled: true
+
+caption:
+  enabled: true
+
+image_generator:
+  enabled: true
+
+video_generator:
+  enabled: false
+
+analytics:
+  enabled: true

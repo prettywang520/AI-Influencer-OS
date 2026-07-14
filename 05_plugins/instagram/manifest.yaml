@@ -1,0 +1,17 @@
+name: instagram
+
+version: 1.0
+
+dependencies:
+
+- caption
+
+- hashtags
+
+supported_workflows:
+
+- instagram_post
+
+- instagram_reels
+
+- story

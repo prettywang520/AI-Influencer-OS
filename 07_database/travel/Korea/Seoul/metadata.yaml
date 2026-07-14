@@ -1,0 +1,17 @@
+city: Seoul
+country: South Korea
+
+mood:
+  - Luxury
+  - Modern
+  - Fashion
+
+season:
+  - Spring
+  - Autumn
+
+brand_fit: 5
+
+best_time:
+  - Golden Hour
+  - Night

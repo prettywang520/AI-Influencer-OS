@@ -1,0 +1,16 @@
+class BaseAgent:
+
+    def prepare(self):
+        ...
+
+    def execute(self):
+        ...
+
+    def validate(self):
+        ...
+
+    def report(self):
+        ...
+
+    def cleanup(self):
+        ...

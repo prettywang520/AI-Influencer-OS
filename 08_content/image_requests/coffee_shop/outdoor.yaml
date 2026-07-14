@@ -1,0 +1,30 @@
+persona: aiko
+
+platform: Instagram
+
+location: %coffee_shop_name%
+
+scene: >
+  Stylish café terrace with outdoor seating,
+  greenery, elegant architecture,
+  city lifestyle atmosphere.
+
+outfit: >
+  White linen blouse,
+  beige wide-leg trousers,
+  luxury shoulder bag,
+  white sneakers.
+
+pose: >
+  Walking out of the café while holding an iced coffee,
+  naturally looking toward the street.
+
+expression: relaxed happy smile
+
+lighting: >
+  Bright natural daylight,
+  clean luxury lifestyle photography.
+
+camera_angle: eye level
+
+aspect_ratio: "4:5"
