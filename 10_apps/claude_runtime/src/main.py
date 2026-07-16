@@ -50,7 +50,6 @@ PLUGIN_ROOT = PROJECT_ROOT / "05_plugins"
 IMAGE_REQUEST_DIR = (
     PROJECT_ROOT
     / "08_content"
-    / "image_requests"
 )
 
 IMAGE_REQUEST_TEMPLATE = (

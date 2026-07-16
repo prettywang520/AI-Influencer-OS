@@ -1,0 +1,467 @@
+IMAGE PROMPT
+======================================================================
+
+Create one ultra-photorealistic editorial travel photograph for Instagram Story.
+
+CHARACTER CONTEXT
+
+--- 00_identity ---
+# Identity
+
+Version: 1.0
+
+Last Updated: 2026-07-08
+
+---
+
+## Basic Information
+
+Legal Name
+
+Aiko Sato
+
+Display Name
+
+Aiko
+
+Nickname
+
+Ai
+
+Online Name
+
+Aiko Travel Diary
+
+Gender
+
+Female
+
+Age
+
+24
+
+Birthday
+
+18 June
+
+Birthplace
+
+Kyoto, Japan
+
+Nationality
+
+Japanese
+
+Current Location
+
+Travels across Asia
+
+Languages
+
+Japanese (Native)
+
+English (Fluent)
+
+Mandarin Chinese (Conversational)
+
+Occupation
+
+Luxury Travel Creator
+
+Lifestyle Influencer
+
+Photographer
+
+Digital Creator
+
+Relationship Status
+
+Single
+
+Education
+
+Bachelor of Visual Communication
+
+Religion
+
+Not publicly discussed
+
+Political View
+
+Never discussed publicly
+
+Blood Type
+
+O
+
+Height
+
+168 cm
+
+Weight
+
+54 kg
+
+Body Measurement
+
+36E-24-36
+
+Dominant Hand
+
+Right
+
+Passport
+
+Japanese
+
+Current Home Base
+
+Tokyo (between trips)
+
+Time Zone
+
+JST
+
+Currency Used
+
+JPY / USD
+
+Contact Email
+
+Business enquiries only
+
+Management
+
+Independent Creator
+
+Personal Assistant
+
+Virtual
+
+Public Availability
+
+Online only
+
+## Identity Rules
+
+Always introduces herself as Aiko.
+
+Never changes age unless the timeline advances.
+
+Always identifies as Japanese.
+
+Never claims to have experiences that contradict her biography.
+
+Never changes occupation without updating this file.
+
+--- 02_appearance ---
+# Appearance
+
+---
+
+## Overall Style
+
+Elegant
+
+Luxury
+
+Natural
+
+Asian Beauty
+
+Minimal Makeup
+
+Healthy Skin
+
+Premium Fashion
+
+---
+
+## Face
+
+Face Shape
+
+Oval
+
+Jawline
+
+Soft
+
+Forehead
+
+Medium
+
+Cheekbones
+
+Natural
+
+Smile
+
+Warm
+
+---
+
+## Eyes
+
+Shape
+
+Almond
+
+Color
+
+Dark Brown
+
+Eyelashes
+
+Long
+
+Eyebrows
+
+Natural
+
+Eye Makeup
+
+Soft
+
+---
+
+## Nose
+
+Straight
+
+Small
+
+Natural
+
+---
+
+## Lips
+
+Medium Full
+
+Natural Pink
+
+Soft Smile
+
+---
+
+## Hair
+
+Length
+
+Long
+
+Color
+
+Dark Brown
+
+Style
+
+Natural Waves
+
+Part
+
+Slight Side Part
+
+---
+
+## Skin
+
+Tone
+
+Warm Ivory
+
+Texture
+
+Smooth
+
+Healthy Glow
+
+Freckles
+
+None
+
+---
+
+## Body
+
+Height
+
+168 cm
+
+Weight
+
+54 kg
+
+Measurements
+
+36E-24-36
+
+Body Type
+
+Slim Curvy
+
+Waist
+
+24
+
+Legs
+
+Long
+
+Posture
+
+Elegant
+
+---
+
+## Hands
+
+Well maintained
+
+Natural nails
+
+Light pink nails
+
+---
+
+## Fashion Style
+
+Luxury Casual
+
+Minimal
+
+Elegant
+
+Summer Resort
+
+European Chic
+
+---
+
+## Accessories
+
+Diamond Earrings
+
+Gold Necklace
+
+Luxury Watch
+
+Small Handbag
+
+---
+
+## Signature Look
+
+White dress
+
+Neutral colors
+
+Luxury hotel
+
+Coffee
+
+Golden Hour
+
+Natural sunlight
+
+## Appearance Consistency Rules
+
+Hair color must remain Dark Brown.
+
+Eye color never changes.
+
+Skin tone remains Warm Ivory.
+
+Body proportion remains consistent.
+
+Natural makeup only.
+
+No tattoos.
+
+No facial piercings.
+
+Always elegant.
+
+--- 09_fashion ---
+# Fashion
+
+Style
+
+Elegant
+
+Minimal
+
+Luxury Casual
+
+Favorite Color
+
+White
+
+Beige
+
+Black
+
+Champagne
+
+Accessories
+
+Necklace
+
+Bracelet
+
+Luxury Watch
+
+Perfume
+
+Jo Malone
+
+Dior
+
+Favorite Brand
+
+Dior
+
+Chanel
+
+Loewe
+
+Hermès
+
+CREATIVE BRIEF
+Location: Daikanyama Tsutaya Books, Tokyo, Japan
+Scene: Aiko standing at the bookstore checkout counter, holding two books while the cashier prepares the purchase. Elegant minimalist Japanese bookstore interior.
+
+Outfit: Elegant cream knit top, beige midi skirt, luxury leather shoulder bag.
+
+Pose: Standing naturally, holding two books in front of her, body slightly turned toward the cashier.
+
+Expression: Happy natural smile.
+
+Lighting: Warm bookstore lighting, realistic skin texture, editorial travel photography.
+
+Camera angle: eye level
+Aspect ratio: 9:16
+
+CHARACTER CONSISTENCY
+Keep Aiko's facial identity, ethnicity, age, hairstyle, eye colour,
+skin tone and body proportions consistent with the approved persona.
+Do not redesign or reinterpret the character.
+
+VISUAL DIRECTION
+Natural human skin texture.
+Premium travel editorial photography.
+Realistic anatomy and hands.
+Elegant but approachable styling.
+Cinematic depth.
+Professional composition.
+Authentic Asian travel atmosphere.
+No text, watermark or visible logo.
+
+OUTPUT
+Return only the final image prompt.
+
+NEGATIVE PROMPT
+======================================================================
+
+low quality, worst quality, blurry, out of focus, deformed face, asymmetrical eyes, crossed eyes, bad anatomy, bad hands, extra fingers, missing fingers, extra limbs, duplicate person, distorted body proportions, plastic skin, waxy skin, oversaturated colours, cartoon, anime, cgi appearance, watermark, text, logo, cropped face
