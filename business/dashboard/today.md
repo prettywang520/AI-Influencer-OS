@@ -1,53 +1,22 @@
-# CEO Dashboard
+# 2026-07-14
 
-Date
+## Today's Focus
 
-2026-07-14
+Coffee Shop Series
 
---------------------------------
-
-Today's Goal
-
-✓ Feed
-
-□ Story
-
-□ Reel
-
-□ Reply Fans
-
---------------------------------
-
-Instagram
-
-Followers
-
-0
-
-Posts
-
-1
+Feed
+✓ latte
 
 Stories
+□ window
+□ counter
+□ croissant
+□ dessert
 
-3
+Caption
+
+Hashtags
 
 Reels
 
-0
-
---------------------------------
-
-Today's Theme
-
-Tokyo
-
-Coffee
-
-Slow Morning
-
---------------------------------
-
-Next Scene
-
-Book Store
+Dashboard

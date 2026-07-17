@@ -5,17 +5,19 @@ platform: Instagram
 location: ""
 
 scene: >
-  Describe the scene here.
+  Describe the full scene.
 
 outfit: >
-  Describe the outfit here.
+  Describe Aiko's outfit.
 
 pose: >
-  Describe the pose here.
+  Describe Aiko's body position and hand placement.
 
-expression: soft confident smile
+expression: >
+  Describe Aiko's facial expression and gaze direction.
 
-lighting: soft natural light
+lighting: >
+  Describe the lighting, mood and photographic style.
 
 camera_angle: eye level
 
