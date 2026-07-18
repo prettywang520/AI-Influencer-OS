@@ -1,7 +1,7 @@
 IMAGE PROMPT
 ======================================================================
 
-Create one ultra-photorealistic editorial travel photograph for instagram.
+Create one ultra-photorealistic editorial travel photograph for Instagram.
 
 CHARACTER CONTEXT
 
@@ -429,15 +429,15 @@ Loewe
 Hermès
 
 CREATIVE BRIEF
-Location: Cathay Pacific First Class Lounge, Hong Kong International Airport
-Scene: Sitting beside the panoramic airport window, enjoying a cup of latte before boarding, luxury travel atmosphere.
+Location: Hong Kong International Airport Duty Free
+Scene: Browsing luxury perfume and skincare boutiques, elegant airport shopping environment, premium retail lighting.
 
-Outfit: Low cut Tube-top High Waist Sling Pleated Dress, luxury handbag.
+Outfit: White blazer, satin camisole, beige skirt, luxury handbag, nude heels.
 
-Pose: Sitting comfortably on the lounge sofa, holding a coffee with one hand, looking outside the airport window.
+Pose: Standing beside a luxury perfume display, holding a perfume bottle while smiling gently.
 
-Expression: gentle relaxed smile
-Lighting: Soft natural daylight through the airport windows, premium editorial photography.
+Expression: elegant happy smile
+Lighting: Bright premium retail lighting, luxury editorial shopping photography.
 
 Camera angle: eye level
 Aspect ratio: 4:5

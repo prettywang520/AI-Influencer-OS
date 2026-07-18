@@ -1,22 +1,16 @@
-# 2026-07-14
+# 2026-07-16
 
-## Today's Focus
+## Theme
+Luxury Hotel
 
-Coffee Shop Series
+## Feed
+- [x] Luxury Hotel Lobby
 
-Feed
-✓ latte
+## Stories
+- [x] Breakfast
+- [x] Pool
+- [x] Rooftop
+- [x] Suite
 
-Stories
-□ window
-□ counter
-□ croissant
-□ dessert
-
-Caption
-
-Hashtags
-
-Reels
-
-Dashboard
+## Status
+Published
