@@ -1,0 +1,21 @@
+version: "1.0"
+database: camera
+
+camera_styles:
+  - id: friend_close_candid
+    text: "close candid shot by a friend from slightly above eye level, natural phone-camera perspective"
+
+  - id: walking_follow_wide
+    text: "friend following two metres behind with a 35mm documentary framing"
+
+  - id: seated_phone_snapshot
+    text: "casual seated phone snapshot from across the table, slight imperfect framing"
+
+  - id: selfie_arm_length
+    text: "arm-length selfie with mild wide-angle distortion and spontaneous expression"
+
+  - id: side_reaction_shot
+    text: "side-angle reaction shot captured mid-conversation"
+
+  - id: top_down_table_moment
+    text: "top-down table view while her hands remain actively engaged with the food or drink"

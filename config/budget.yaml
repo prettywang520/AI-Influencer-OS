@@ -1,0 +1,9 @@
+monthly_budget_usd: 20
+
+daily_budget_usd: 0.70
+
+warning_at_percent: 80
+
+stop_at_percent: 100
+
+model: gpt-image-1

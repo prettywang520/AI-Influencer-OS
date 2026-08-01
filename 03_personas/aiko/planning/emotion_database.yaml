@@ -1,0 +1,21 @@
+version: "1.0"
+database: emotion
+
+emotions:
+  - id: amused
+    text: "amused, with a small spontaneous laugh and relaxed eyes"
+
+  - id: curious
+    text: "curious, with slightly raised eyebrows and focused eye movement"
+
+  - id: playful
+    text: "playful, with a brief teasing expression rather than a posed smile"
+
+  - id: surprised
+    text: "genuinely surprised, pausing mid-action with widened eyes"
+
+  - id: content
+    text: "quietly content, with softened shoulders and a natural closed-mouth smile"
+
+  - id: focused
+    text: "focused on the activity, not looking at the camera"

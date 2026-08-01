@@ -1,0 +1,54 @@
+version: "2.0"
+library: location
+status: production
+
+reply_groups:
+
+  verified_venue:
+    description: >
+      Use when both venue_name and city are verified.
+
+    replies:
+      - id: L0001
+        emotion: helpful
+        weight: 20
+        requires_context:
+          - venue_name
+          - city
+        text: "this is {venue_name} in {city} 🇯🇵"
+
+      - id: L0002
+        emotion: helpful
+        weight: 15
+        requires_context:
+          - venue_name
+          - city
+        text: "you're looking at {venue_name} in {city} 🤍"
+
+  tokyo:
+    replies:
+      - id: L001
+        emotion: helpful
+        weight: 10
+        text: "this is tokyo 🇯🇵 one of my favourite cities."
+
+  kyoto:
+    replies:
+      - id: L021
+        emotion: helpful
+        weight: 10
+        text: "this is beautiful kyoto 🌸"
+
+  osaka:
+    replies:
+      - id: L041
+        emotion: helpful
+        weight: 10
+        text: "this is osaka 🇯🇵 such a lively city."
+
+  generic:
+    replies:
+      - id: L061
+        emotion: helpful
+        weight: 5
+        text: "you should visit if you ever get the chance 🌸"

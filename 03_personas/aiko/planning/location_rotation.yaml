@@ -1,0 +1,361 @@
+version: "1.0"
+database: location_rotation
+status: production
+
+selection_rules:
+  avoid_recent_venue_days: 30
+  avoid_recent_city_days: 3
+  prefer_verified_public_locations: true
+  avoid_private_addresses: true
+  rotate_indoor_and_outdoor: true
+
+countries:
+
+  Japan:
+    cities:
+
+      Tokyo:
+        timezone: Asia/Tokyo
+        language_detail: Japanese
+
+        venues:
+          bookstore:
+            - id: tokyo_bookstore_daikanyama_tsite
+              name: Daikanyama T-Site
+              district: Daikanyama
+              indoor: true
+              preferred_dayparts:
+                - morning
+                - afternoon
+              allowed_weather:
+                - clear
+                - cloudy
+                - rain
+              weight: 10
+
+            - id: tokyo_bookstore_jimbocho
+              name: Jimbocho Book Town
+              district: Chiyoda
+              indoor: false
+              preferred_dayparts:
+                - morning
+                - afternoon
+              weight: 8
+
+          coffee_shop:
+            - id: tokyo_cafe_kiyosumi
+              name: Kiyosumi-Shirakawa Coffee District
+              district: Koto
+              indoor: true
+              preferred_dayparts:
+                - morning
+              weight: 10
+
+            - id: tokyo_cafe_kagurazaka
+              name: Kagurazaka Café Street
+              district: Shinjuku
+              indoor: true
+              preferred_dayparts:
+                - afternoon
+              weight: 8
+
+          shopping:
+            - id: tokyo_shopping_ginza
+              name: Ginza Shopping District
+              district: Ginza
+              indoor: false
+              preferred_dayparts:
+                - afternoon
+              weight: 10
+
+          museum:
+            - id: tokyo_museum_ueno
+              name: Ueno Museum District
+              district: Ueno
+              indoor: true
+              preferred_dayparts:
+                - morning
+                - afternoon
+              weight: 9
+
+          old_town:
+            - id: tokyo_oldtown_yanaka
+              name: Yanaka Ginza
+              district: Taito
+              indoor: false
+              preferred_dayparts:
+                - morning
+                - late_afternoon
+              weight: 9
+
+      Kyoto:
+        timezone: Asia/Tokyo
+        language_detail: Japanese
+
+        venues:
+          old_town:
+            - id: kyoto_oldtown_higashiyama
+              name: Higashiyama District
+              district: Higashiyama
+              indoor: false
+              preferred_dayparts:
+                - sunrise
+                - morning
+              weight: 10
+
+            - id: kyoto_oldtown_gion
+              name: Gion
+              district: Higashiyama
+              indoor: false
+              preferred_dayparts:
+                - morning
+                - evening
+              weight: 9
+
+          local_market:
+            - id: kyoto_market_nishiki
+              name: Nishiki Market
+              district: Nakagyo
+              indoor: true
+              preferred_dayparts:
+                - morning
+                - afternoon
+              weight: 10
+
+          temple:
+            - id: kyoto_temple_nanjenji
+              name: Nanzen-ji Area
+              district: Sakyo
+              indoor: false
+              preferred_dayparts:
+                - sunrise
+                - morning
+              weight: 9
+
+      Osaka:
+        timezone: Asia/Tokyo
+        language_detail: Japanese
+
+        venues:
+          street_food:
+            - id: osaka_food_dotonbori
+              name: Dotonbori
+              district: Chuo
+              indoor: false
+              preferred_dayparts:
+                - evening
+              weight: 10
+
+          local_market:
+            - id: osaka_market_kuromon
+              name: Kuromon Ichiba Market
+              district: Chuo
+              indoor: true
+              preferred_dayparts:
+                - morning
+                - afternoon
+              weight: 10
+
+  Taiwan:
+    cities:
+
+      Taipei:
+        timezone: Asia/Taipei
+        language_detail: Traditional Chinese
+
+        venues:
+          night_market:
+            - id: taipei_nightmarket_ningxia
+              name: Ningxia Night Market
+              district: Datong
+              indoor: false
+              preferred_dayparts:
+                - evening
+                - night
+              weight: 10
+
+            - id: taipei_nightmarket_raohestreet
+              name: Raohe Street Night Market
+              district: Songshan
+              indoor: false
+              preferred_dayparts:
+                - evening
+              weight: 9
+
+          coffee_shop:
+            - id: taipei_cafe_dadaocheng
+              name: Dadaocheng Café District
+              district: Datong
+              indoor: true
+              preferred_dayparts:
+                - morning
+                - afternoon
+              weight: 9
+
+          bookstore:
+            - id: taipei_bookstore_songyan
+              name: Songyan Bookstore District
+              district: Xinyi
+              indoor: true
+              preferred_dayparts:
+                - afternoon
+              weight: 8
+
+          sightseeing:
+            - id: taipei_view_xiangshan
+              name: Xiangshan Trail
+              district: Xinyi
+              indoor: false
+              preferred_dayparts:
+                - sunrise
+                - sunset
+              weight: 9
+
+  South Korea:
+    cities:
+
+      Seoul:
+        timezone: Asia/Seoul
+        language_detail: Korean
+
+        venues:
+          coffee_shop:
+            - id: seoul_cafe_ikseondong
+              name: Ikseon-dong Hanok Village
+              district: Jongno
+              indoor: true
+              preferred_dayparts:
+                - morning
+                - afternoon
+              weight: 10
+
+          shopping:
+            - id: seoul_shopping_seongsu
+              name: Seongsu Creative District
+              district: Seongdong
+              indoor: false
+              preferred_dayparts:
+                - afternoon
+              weight: 9
+
+          old_town:
+            - id: seoul_oldtown_bukchon
+              name: Bukchon Hanok Village
+              district: Jongno
+              indoor: false
+              preferred_dayparts:
+                - morning
+              weight: 9
+
+  Hong Kong:
+    cities:
+
+      Hong Kong:
+        timezone: Asia/Hong_Kong
+        language_detail: Traditional Chinese
+
+        venues:
+          sightseeing:
+            - id: hongkong_sightseeing_central_piers
+              name: Central Ferry Piers
+              district: Central
+              indoor: false
+              preferred_dayparts:
+                - sunset
+                - evening
+              weight: 10
+
+          street_food:
+            - id: hongkong_food_shamshuipo
+              name: Sham Shui Po Food District
+              district: Sham Shui Po
+              indoor: false
+              preferred_dayparts:
+                - afternoon
+                - evening
+              weight: 10
+
+          luxury_hotel:
+            - id: hongkong_hotel_tsimshatsui
+              name: Tsim Sha Tsui Harbour Hotel District
+              district: Tsim Sha Tsui
+              indoor: true
+              preferred_dayparts:
+                - afternoon
+                - evening
+              weight: 8
+
+  Thailand:
+    cities:
+
+      Bangkok:
+        timezone: Asia/Bangkok
+        language_detail: Thai
+
+        venues:
+          street_food:
+            - id: bangkok_food_charoenkrung
+              name: Charoen Krung
+              district: Bang Rak
+              indoor: false
+              preferred_dayparts:
+                - evening
+              weight: 10
+
+          local_market:
+            - id: bangkok_market_or_tor_kor
+              name: Or Tor Kor Market
+              district: Chatuchak
+              indoor: true
+              preferred_dayparts:
+                - morning
+                - afternoon
+              weight: 9
+
+          luxury_hotel:
+            - id: bangkok_hotel_riverside
+              name: Chao Phraya Riverside Hotel District
+              district: Riverside
+              indoor: true
+              preferred_dayparts:
+                - late_afternoon
+                - evening
+              weight: 9
+
+  Singapore:
+    cities:
+
+      Singapore:
+        timezone: Asia/Singapore
+        language_detail: English
+
+        venues:
+          luxury_hotel:
+            - id: singapore_hotel_marinabay
+              name: Marina Bay Hotel District
+              district: Marina Bay
+              indoor: true
+              preferred_dayparts:
+                - afternoon
+                - evening
+              weight: 10
+
+          local_market:
+            - id: singapore_market_tekka
+              name: Tekka Centre
+              district: Little India
+              indoor: true
+              preferred_dayparts:
+                - morning
+                - afternoon
+              weight: 9
+
+          sightseeing:
+            - id: singapore_sightseeing_gardens
+              name: Gardens by the Bay
+              district: Marina Bay
+              indoor: false
+              preferred_dayparts:
+                - morning
+                - evening
+              weight: 10

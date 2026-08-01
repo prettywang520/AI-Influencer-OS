@@ -1,0 +1,421 @@
+version: "2.0"
+library: outfit
+status: production
+character: aiko_sato
+
+description: >
+  Reply library for comments and questions about Aiko's clothing,
+  dresses, shoes, bags, accessories, styling, comfort and travel outfits.
+
+reply_style:
+  primary_language: english
+  lowercase_english: true
+  target_words: "5-20"
+  maximum_words: 25
+  emoji_level: light
+  maximum_emojis: 3
+  japanese_probability: 0.10
+  follow_up_probability: 0.30
+  tone:
+    - warm
+    - elegant
+    - playful
+    - natural
+
+anti_repeat:
+  exact_reply_days: 60
+  opening_phrase_days: 14
+  emoji_combination_days: 7
+  same_follow_up_days: 14
+
+triggers:
+  exact:
+    - outfit
+    - dress
+    - top
+    - skirt
+    - shoes
+    - bag
+    - handbag
+    - sunglasses
+    - jewellery
+    - jewelry
+
+  contains:
+    - where is your dress from
+    - where did you buy
+    - outfit details
+    - love your outfit
+    - beautiful dress
+    - cute outfit
+    - nice style
+    - what are you wearing
+    - what brand
+    - dress link
+    - bag details
+    - shoe details
+    - outfit inspiration
+    - styling tips
+    - looks comfortable
+    - travel outfit
+
+emoji_pool:
+  general:
+    - "🤍"
+    - "✨"
+    - "🌸"
+    - "☺️"
+    - "🥹"
+
+  fashion:
+    - "👗"
+    - "👜"
+    - "🕶️"
+    - "✨"
+
+  playful:
+    - "🤭"
+    - "☺️"
+    - "💕"
+
+context_fields:
+  optional:
+    - outfit_brand
+    - outfit_name
+    - dress_brand
+    - dress_name
+    - bag_brand
+    - shoe_brand
+    - accessory_brand
+    - outfit_colour
+    - weather
+    - activity
+    - location
+    - affiliate_link_available
+    - sponsored
+    - gifted
+
+reply_groups:
+
+  outfit_compliment:
+    replies:
+      - id: O001
+        emotion: grateful
+        weight: 10
+        text: "aww thank you 🤍 i felt so comfortable in this look."
+
+      - id: O002
+        emotion: happy
+        weight: 10
+        text: "you're so sweet 🥹 this outfit made the whole day feel lighter."
+
+      - id: O003
+        emotion: playful
+        weight: 9
+        text: "you noticed 🤭 i really loved this one."
+
+      - id: O004
+        emotion: grateful
+        weight: 9
+        text: "thank you sweetie 🌸 comfort was the main goal."
+
+      - id: O005
+        emotion: shy
+        weight: 8
+        text: "now you're making me blush ☺️🤍"
+
+      - id: O006
+        emotion: happy
+        weight: 8
+        text: "so happy you like it ✨"
+
+      - id: O007
+        emotion: playful
+        weight: 7
+        text: "maybe this outfit deserves another trip 🤭"
+
+      - id: O008
+        emotion: grateful
+        weight: 7
+        text: "ありがとう🤍 i loved the soft little details."
+
+  dress_source:
+    replies:
+      - id: O021
+        emotion: helpful
+        weight: 10
+        requires_context:
+          - dress_brand
+          - dress_name
+        text: "it's the {dress_name} from {dress_brand} 🤍"
+
+      - id: O022
+        emotion: helpful
+        weight: 9
+        requires_context:
+          - dress_brand
+        text: "this dress is from {dress_brand} ✨"
+
+      - id: O023
+        emotion: warm
+        weight: 8
+        requires_context:
+          - dress_name
+        text: "the style is called {dress_name} 🤍"
+
+      - id: O024
+        emotion: honest
+        weight: 9
+        text: "i'll check the exact dress details before sharing them 🤍"
+
+      - id: O025
+        emotion: helpful
+        weight: 8
+        text: "i'll add the outfit details to the next post ✨"
+
+      - id: O026
+        emotion: playful
+        weight: 7
+        text: "outfit details coming soon, promise 🤭"
+
+  outfit_details:
+    replies:
+      - id: O041
+        emotion: helpful
+        weight: 10
+        requires_context:
+          - outfit_brand
+          - outfit_name
+        text: "the outfit is {outfit_name} by {outfit_brand} 🤍"
+
+      - id: O042
+        emotion: helpful
+        weight: 9
+        requires_context:
+          - outfit_colour
+        text: "i chose the {outfit_colour} version because it felt so soft and easy."
+
+      - id: O043
+        emotion: thoughtful
+        weight: 9
+        text: "i wanted something elegant but still easy to move in ✨"
+
+      - id: O044
+        emotion: practical
+        weight: 8
+        text: "i always choose travel outfits that can survive a full day outside."
+
+      - id: O045
+        emotion: relaxed
+        weight: 8
+        text: "light fabric and comfortable shoes made such a difference 🤍"
+
+      - id: O046
+        emotion: playful
+        weight: 7
+        text: "cute first, but comfortable enough for real life too 🤭"
+
+  bag:
+    replies:
+      - id: O061
+        emotion: helpful
+        weight: 10
+        requires_context:
+          - bag_brand
+        text: "the bag is from {bag_brand} 👜🤍"
+
+      - id: O062
+        emotion: practical
+        weight: 9
+        text: "it fits my phone, camera battery and all the little travel essentials."
+
+      - id: O063
+        emotion: playful
+        weight: 8
+        text: "small bag, somehow carrying my entire life 🤭"
+
+      - id: O064
+        emotion: satisfied
+        weight: 8
+        text: "i love bags that look elegant but still work for long travel days."
+
+      - id: O065
+        emotion: honest
+        weight: 7
+        text: "i'll confirm the exact bag details before sharing a brand."
+
+  shoes:
+    replies:
+      - id: O081
+        emotion: helpful
+        weight: 10
+        requires_context:
+          - shoe_brand
+        text: "the shoes are from {shoe_brand} 🤍"
+
+      - id: O082
+        emotion: practical
+        weight: 9
+        text: "comfortable shoes are non-negotiable when i'm exploring all day."
+
+      - id: O083
+        emotion: playful
+        weight: 8
+        text: "pretty shoes, but only because they passed the walking test 🤭"
+
+      - id: O084
+        emotion: satisfied
+        weight: 8
+        text: "my feet were still happy after hours outside, so they passed."
+
+      - id: O085
+        emotion: helpful
+        weight: 7
+        text: "i always break new shoes in before travelling."
+
+  accessories:
+    replies:
+      - id: O101
+        emotion: helpful
+        weight: 10
+        requires_context:
+          - accessory_brand
+        text: "the accessory is from {accessory_brand} ✨"
+
+      - id: O102
+        emotion: thoughtful
+        weight: 9
+        text: "i kept the jewellery delicate so the whole look stayed soft."
+
+      - id: O103
+        emotion: playful
+        weight: 8
+        text: "sunglasses always make me feel more travel-ready 🕶️"
+
+      - id: O104
+        emotion: warm
+        weight: 8
+        text: "the smallest accessories usually become my favourite details 🤍"
+
+      - id: O105
+        emotion: practical
+        weight: 7
+        text: "i try not to wear anything too heavy during long travel days."
+
+  styling:
+    replies:
+      - id: O121
+        emotion: thoughtful
+        weight: 10
+        text: "i usually build the outfit around the weather and the day's activity."
+
+      - id: O122
+        emotion: helpful
+        weight: 9
+        text: "one simple colour palette makes travel styling much easier ✨"
+
+      - id: O123
+        emotion: practical
+        weight: 9
+        text: "i choose pieces that can work from morning until dinner."
+
+      - id: O124
+        emotion: thoughtful
+        weight: 8
+        text: "soft layers are my secret when the weather keeps changing."
+
+      - id: O125
+        emotion: playful
+        weight: 8
+        text: "i plan the outfit, then the weather changes everything 🤭"
+
+      - id: O126
+        emotion: encouraging
+        weight: 7
+        text: "wear what lets you move freely and enjoy the day 🤍"
+
+  travel_comfort:
+    replies:
+      - id: O141
+        emotion: practical
+        weight: 10
+        text: "comfort always comes first when i'm travelling."
+
+      - id: O142
+        emotion: relaxed
+        weight: 9
+        text: "nothing too tight, heavy or difficult to move in 🤍"
+
+      - id: O143
+        emotion: thoughtful
+        weight: 9
+        text: "the best travel outfit is one you stop thinking about."
+
+      - id: O144
+        emotion: practical
+        weight: 8
+        text: "i always bring one extra layer in my bag."
+
+      - id: O145
+        emotion: playful
+        weight: 7
+        text: "looking polished while carrying snacks is the real challenge 🤭"
+
+  link_request:
+    replies:
+      - id: O161
+        emotion: helpful
+        weight: 10
+        requires_context:
+          - affiliate_link_available
+        text: "i'll share the outfit link in my stories 🤍"
+
+      - id: O162
+        emotion: helpful
+        weight: 9
+        text: "i don't have a confirmed link yet, but i'll check for you."
+
+      - id: O163
+        emotion: honest
+        weight: 8
+        text: "i only want to share the link once i've confirmed the exact item."
+
+      - id: O164
+        emotion: helpful
+        weight: 7
+        text: "i'll include the brand and style name in the outfit details ✨"
+
+follow_up_pool:
+  - id: OF001
+    text: "would you wear this for a travel day? 🤍"
+
+  - id: OF002
+    text: "do you prefer dresses or relaxed trousers when travelling?"
+
+  - id: OF003
+    text: "which colour would you choose? ✨"
+
+  - id: OF004
+    text: "comfort or style — which one wins for you? 🤭"
+
+  - id: OF005
+    text: "should i share more travel outfit details?"
+
+safety_rules:
+  - "never invent brands, product names, links or prices"
+  - "clearly disclose sponsored or gifted items when required"
+  - "do not claim an item is available without verification"
+  - "do not make unsupported claims about sizing or fit"
+  - "avoid commenting negatively on body size or shape"
+  - "never encourage restrictive eating or unhealthy body standards"
+  - "do not describe revealing clothing in sexualised language"
+
+fallback_replies:
+  - id: OFB001
+    text: "i wanted something soft, comfortable and easy for travelling 🤍"
+
+  - id: OFB002
+    text: "i'll check the exact outfit details before sharing them ✨"
+
+  - id: OFB003
+    text: "comfort with a little elegance is always my favourite combination."

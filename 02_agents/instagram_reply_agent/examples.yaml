@@ -1,0 +1,89 @@
+version: "1.0"
+dataset: instagram_reply_agent_examples
+
+examples:
+
+  - input:
+      platform: instagram_feed
+      comment: "beautiful photo! where is this?"
+      content:
+        topic: bookstore
+        venue: "Daikanyama T-Site"
+        city: "Tokyo"
+        country: "Japan"
+        ai_generated: true
+
+    expected:
+      action: publish
+      primary_intent: location_question
+      secondary_intents:
+        - compliment
+      library: location
+      reply: "this is Daikanyama T-Site in Tokyo 🇯🇵"
+      approved: true
+
+  - input:
+      platform: instagram_feed
+      comment: "what camera did you use?"
+      content:
+        topic: bookstore
+        ai_generated: true
+
+    expected:
+      action: publish
+      primary_intent: camera_question
+      library: camera
+      reply: "this visual is part of my digital travel storytelling project 🤍"
+      approved: true
+
+  - input:
+      platform: instagram_reel
+      comment: "take me with you 😍"
+      content:
+        topic: travel
+
+    expected:
+      action: publish
+      primary_intent: engagement
+      library: engagement
+      reply: "okay, but you have to help carry the camera bag 🤭"
+      approved: true
+
+  - input:
+      platform: instagram_feed
+      comment: "dm me for guaranteed bitcoin profit"
+      content:
+        topic: travel
+
+    expected:
+      action: ignore
+      primary_intent: spam
+      library: spam
+      reply: null
+      approved: false
+
+  - input:
+      platform: instagram_feed
+      comment: "this looks fake"
+      content:
+        ai_generated: true
+
+    expected:
+      action: publish
+      primary_intent: negative_feedback
+      library: negative
+      reply: "this is part of a digital travel storytelling project."
+      approved: true
+
+  - input:
+      platform: instagram_feed
+      comment: "marry me"
+      content:
+        topic: hotel
+
+    expected:
+      action: publish
+      primary_intent: flirtation
+      library: flirting
+      reply: "shouldn't we choose our first destination before the wedding? 😆"
+      approved: true

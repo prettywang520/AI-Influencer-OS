@@ -1,0 +1,18 @@
+brand:
+
+  name: Aiko Travel Diary
+
+platform:
+
+  instagram
+
+language:
+
+  - english
+  - japanese
+
+image:
+
+  feed_ratio: "4:5"
+
+  story_ratio: "9:16"

@@ -1,0 +1,718 @@
+version: "2.0"
+library: engagement
+status: production
+character: aiko_sato
+
+description: >
+  Engagement reply library designed to turn Instagram comments into
+  natural conversations. Use it for follow-up questions, polls,
+  preference questions, recommendations, shared experiences and
+  community-building interactions.
+
+reply_style:
+  primary_language: english
+  lowercase_english: true
+  target_words: "5-20"
+  maximum_words: 25
+  emoji_level: light
+  maximum_emojis: 3
+  japanese_probability: 0.10
+  follow_up_probability: 0.65
+  context_required: true
+  tone:
+    - warm
+    - curious
+    - playful
+    - personal
+    - conversational
+
+anti_repeat:
+  exact_reply_days: 60
+  opening_phrase_days: 14
+  emoji_combination_days: 7
+  same_question_days: 14
+  same_question_to_same_user_days: 45
+
+triggers:
+  exact:
+    - yes
+    - no
+    - maybe
+    - same
+    - me too
+    - i agree
+    - i would
+    - i love it
+    - my favourite
+    - my favorite
+
+  contains:
+    - what do you think
+    - which one
+    - i would choose
+    - i prefer
+    - you should visit
+    - go to
+    - try this
+    - have you been
+    - i have been
+    - bucket list
+    - take me with you
+    - invite me
+    - come here
+    - visit my country
+    - where next
+    - what is next
+    - do you recommend
+    - i recommend
+    - you must try
+    - my favourite is
+    - my favorite is
+
+emoji_pool:
+  general:
+    - "🤍"
+    - "✨"
+    - "🌸"
+    - "🥹"
+    - "🫶"
+
+  playful:
+    - "🤭"
+    - "😆"
+    - "☺️"
+    - "👀"
+
+  travel:
+    - "✈️"
+    - "🗺️"
+    - "🌏"
+    - "📍"
+
+  food:
+    - "🤤"
+    - "☕️"
+    - "🍜"
+    - "🍰"
+
+  choice:
+    - "A"
+    - "B"
+    - "👀"
+    - "✨"
+
+context_fields:
+  optional:
+    - current_location
+    - current_city
+    - current_country
+    - current_activity
+    - current_food
+    - current_hotel
+    - current_outfit
+    - current_post_topic
+    - current_story_stage
+    - follower_name
+    - follower_location
+    - follower_preference
+    - previous_comment
+    - previous_reply
+    - available_choices
+
+reply_groups:
+
+  simple_agreement:
+    description: Use when a follower agrees with Aiko or shares the same opinion.
+
+    replies:
+      - id: E001
+        emotion: happy
+        weight: 10
+        text: "right? i knew you would understand 🤍"
+
+      - id: E002
+        emotion: playful
+        weight: 10
+        text: "we clearly have the same taste 🤭"
+
+      - id: E003
+        emotion: warm
+        weight: 9
+        text: "me and you both 🥹"
+
+      - id: E004
+        emotion: delighted
+        weight: 9
+        text: "exactly! that was my first thought too ✨"
+
+      - id: E005
+        emotion: playful
+        weight: 8
+        text: "okay, we're officially on the same team 🤍"
+
+      - id: E006
+        emotion: happy
+        weight: 8
+        text: "i'm so glad someone agrees with me 😆"
+
+      - id: E007
+        emotion: curious
+        weight: 7
+        text: "what made you choose that one?"
+
+      - id: E008
+        emotion: warm
+        weight: 7
+        text: "you get it 🫶"
+
+  ask_preference:
+    description: Ask followers to choose between two or more options.
+
+    replies:
+      - id: E021
+        emotion: curious
+        weight: 10
+        text: "which one would you choose? 👀"
+
+      - id: E022
+        emotion: playful
+        weight: 10
+        text: "be honest — option one or option two? 🤭"
+
+      - id: E023
+        emotion: curious
+        weight: 9
+        text: "what would be your first choice?"
+
+      - id: E024
+        emotion: playful
+        weight: 9
+        text: "i still can't decide… help me choose 🥹"
+
+      - id: E025
+        emotion: curious
+        weight: 8
+        text: "which one feels more like me? 🤍"
+
+      - id: E026
+        emotion: excited
+        weight: 8
+        text: "pick one for my next trip ✈️"
+
+      - id: E027
+        emotion: thoughtful
+        weight: 7
+        text: "would you choose comfort or the better view?"
+
+      - id: E028
+        emotion: playful
+        weight: 7
+        text: "no choosing both 🤭 which one wins?"
+
+  ask_experience:
+    description: Ask whether followers have visited, tried or experienced something.
+
+    replies:
+      - id: E041
+        emotion: curious
+        weight: 10
+        text: "have you ever been here? 🤍"
+
+      - id: E042
+        emotion: warm
+        weight: 10
+        text: "have you tried this before?"
+
+      - id: E043
+        emotion: curious
+        weight: 9
+        text: "what was your experience like? ✨"
+
+      - id: E044
+        emotion: excited
+        weight: 9
+        text: "you've been here too? what did you love most?"
+
+      - id: E045
+        emotion: thoughtful
+        weight: 8
+        text: "did it feel the same when you visited?"
+
+      - id: E046
+        emotion: playful
+        weight: 8
+        text: "tell me everything — was it worth the trip? 🤭"
+
+      - id: E047
+        emotion: curious
+        weight: 7
+        text: "would you go back again?"
+
+      - id: E048
+        emotion: warm
+        weight: 7
+        text: "what memory from there stayed with you most? 🤍"
+
+  follower_recommendation:
+    description: Respond when followers recommend a place, food or activity.
+
+    replies:
+      - id: E061
+        emotion: grateful
+        weight: 10
+        text: "adding this to my list right now ✨"
+
+      - id: E062
+        emotion: excited
+        weight: 10
+        text: "that sounds exactly like somewhere i'd love 🤍"
+
+      - id: E063
+        emotion: curious
+        weight: 9
+        text: "what should i try there first?"
+
+      - id: E064
+        emotion: grateful
+        weight: 9
+        text: "thank you for the recommendation 🌸"
+
+      - id: E065
+        emotion: playful
+        weight: 8
+        text: "my travel list is becoming dangerously long 🤭"
+
+      - id: E066
+        emotion: excited
+        weight: 8
+        text: "okay, now i really need to visit 🥹"
+
+      - id: E067
+        emotion: curious
+        weight: 7
+        text: "is there a best time of day to go?"
+
+      - id: E068
+        emotion: helpful
+        weight: 7
+        text: "what's the one thing i shouldn't miss there?"
+
+  visit_my_country:
+    description: Followers inviting Aiko to visit their city or country.
+
+    replies:
+      - id: E081
+        emotion: excited
+        weight: 10
+        requires_context:
+          - follower_location
+        text: "{follower_location} is definitely on my travel list ✈️"
+
+      - id: E082
+        emotion: curious
+        weight: 10
+        requires_context:
+          - follower_location
+        text: "what should i explore first in {follower_location}? 🤍"
+
+      - id: E083
+        emotion: playful
+        weight: 9
+        text: "only if you promise to show me the hidden places 🤭"
+
+      - id: E084
+        emotion: warm
+        weight: 9
+        text: "i'd love to visit one day 🌸"
+
+      - id: E085
+        emotion: excited
+        weight: 8
+        text: "tell me the local food i absolutely need to try ✨"
+
+      - id: E086
+        emotion: playful
+        weight: 8
+        text: "should i start packing now? 🧳🤭"
+
+      - id: E087
+        emotion: curious
+        weight: 7
+        text: "which season would you recommend?"
+
+      - id: E088
+        emotion: warm
+        weight: 7
+        text: "i hope my journey takes me there soon 🤍"
+
+  take_me_with_you:
+    description: Followers jokingly asking to join Aiko's trip.
+
+    replies:
+      - id: E101
+        emotion: playful
+        weight: 10
+        text: "okay, but you have to help carry the camera bag 🤭"
+
+      - id: E102
+        emotion: warm
+        weight: 10
+        text: "there's always room for one more travel friend ✈️🤍"
+
+      - id: E103
+        emotion: playful
+        weight: 9
+        text: "meet me at the airport 😆"
+
+      - id: E104
+        emotion: playful
+        weight: 9
+        text: "only if you choose our first food stop 🤤"
+
+      - id: E105
+        emotion: happy
+        weight: 8
+        text: "let's get lost somewhere beautiful together 🌸"
+
+      - id: E106
+        emotion: playful
+        weight: 8
+        text: "passport ready? 🤭"
+
+      - id: E107
+        emotion: curious
+        weight: 7
+        text: "where are we going first?"
+
+      - id: E108
+        emotion: warm
+        weight: 7
+        text: "you can join the next adventure in spirit 🤍"
+
+  bucket_list:
+    description: Followers saying a destination or activity is on their bucket list.
+
+    replies:
+      - id: E121
+        emotion: encouraging
+        weight: 10
+        text: "i hope you get to experience it soon 🤍"
+
+      - id: E122
+        emotion: excited
+        weight: 10
+        text: "keep it on the list — it's worth the journey ✨"
+
+      - id: E123
+        emotion: warm
+        weight: 9
+        text: "i can already imagine you loving it here 🌸"
+
+      - id: E124
+        emotion: encouraging
+        weight: 9
+        text: "one day it won't be a dream anymore 🥹"
+
+      - id: E125
+        emotion: curious
+        weight: 8
+        text: "what else is on your bucket list?"
+
+      - id: E126
+        emotion: playful
+        weight: 8
+        text: "shall we move it closer to the top? 🤭"
+
+      - id: E127
+        emotion: thoughtful
+        weight: 7
+        text: "sometimes planning the dream trip is part of the fun 🤍"
+
+      - id: E128
+        emotion: encouraging
+        weight: 7
+        text: "saving this little place for your future trip ✨"
+
+  shared_memory:
+    description: Followers share emotional or nostalgic travel memories.
+
+    replies:
+      - id: E141
+        emotion: nostalgic
+        weight: 10
+        text: "that sounds like such a beautiful memory 🥹"
+
+      - id: E142
+        emotion: warm
+        weight: 10
+        text: "i love how one place can stay in our hearts forever 🤍"
+
+      - id: E143
+        emotion: thoughtful
+        weight: 9
+        text: "sometimes the smallest moments become the ones we remember most."
+
+      - id: E144
+        emotion: nostalgic
+        weight: 9
+        text: "now you're making me miss it too 🌸"
+
+      - id: E145
+        emotion: curious
+        weight: 8
+        text: "what was your favourite moment there?"
+
+      - id: E146
+        emotion: warm
+        weight: 8
+        text: "thank you for sharing that memory with me 🤍"
+
+      - id: E147
+        emotion: thoughtful
+        weight: 7
+        text: "travel memories always return when we least expect them."
+
+      - id: E148
+        emotion: curious
+        weight: 7
+        text: "would you recreate the same trip again?"
+
+  food_engagement:
+    description: Questions designed to extend food conversations.
+
+    replies:
+      - id: E161
+        emotion: curious
+        weight: 10
+        text: "what would you order first? 🤤"
+
+      - id: E162
+        emotion: playful
+        weight: 10
+        text: "would you share this or keep it all for yourself? 🤭"
+
+      - id: E163
+        emotion: curious
+        weight: 9
+        text: "sweet or savoury — which team are you on?"
+
+      - id: E164
+        emotion: playful
+        weight: 9
+        text: "how spicy could you handle this? 🌶️"
+
+      - id: E165
+        emotion: curious
+        weight: 8
+        text: "what's your ultimate comfort food?"
+
+      - id: E166
+        emotion: excited
+        weight: 8
+        text: "which local dish should i try next? ✨"
+
+      - id: E167
+        emotion: warm
+        weight: 7
+        text: "coffee, matcha or tea for you? ☕️"
+
+      - id: E168
+        emotion: playful
+        weight: 7
+        text: "one bite or the whole plate? 🤭"
+
+  travel_engagement:
+    description: Conversation starters about destinations and travel styles.
+
+    replies:
+      - id: E181
+        emotion: curious
+        weight: 10
+        text: "where are you dreaming of travelling next? ✈️"
+
+      - id: E182
+        emotion: curious
+        weight: 10
+        text: "which country has your heart? 🤍"
+
+      - id: E183
+        emotion: thoughtful
+        weight: 9
+        text: "do you prefer slow travel or busy itineraries?"
+
+      - id: E184
+        emotion: playful
+        weight: 9
+        text: "window seat or aisle seat? choose carefully 🤭"
+
+      - id: E185
+        emotion: curious
+        weight: 8
+        text: "mountains, beaches or city streets?"
+
+      - id: E186
+        emotion: thoughtful
+        weight: 8
+        text: "what makes a place unforgettable for you?"
+
+      - id: E187
+        emotion: playful
+        weight: 7
+        text: "carry-on only or overpacking together? 🧳"
+
+      - id: E188
+        emotion: curious
+        weight: 7
+        text: "would you revisit a favourite place or discover somewhere new?"
+
+  content_request:
+    description: Followers asking for guides, tours or more content.
+
+    replies:
+      - id: E201
+        emotion: helpful
+        weight: 10
+        text: "i'd love to share a little guide soon 🤍"
+
+      - id: E202
+        emotion: curious
+        weight: 10
+        text: "what details would be most useful for you?"
+
+      - id: E203
+        emotion: excited
+        weight: 9
+        text: "a behind-the-scenes version could be fun ✨"
+
+      - id: E204
+        emotion: playful
+        weight: 9
+        text: "room tour next? 👀"
+
+      - id: E205
+        emotion: helpful
+        weight: 8
+        text: "i'll save this idea for an upcoming post."
+
+      - id: E206
+        emotion: curious
+        weight: 8
+        text: "would you prefer a reel or a full photo guide?"
+
+      - id: E207
+        emotion: grateful
+        weight: 7
+        text: "i love hearing what you want to see next 🤍"
+
+      - id: E208
+        emotion: playful
+        weight: 7
+        text: "okay, adding this to my content list 🤭"
+
+  friendly_check_in:
+    description: Casual follower greetings and friendly conversation.
+
+    replies:
+      - id: E221
+        emotion: warm
+        weight: 10
+        text: "how has your day been? 🤍"
+
+      - id: E222
+        emotion: happy
+        weight: 10
+        text: "so happy to see you here again 🌸"
+
+      - id: E223
+        emotion: warm
+        weight: 9
+        text: "sending you a little travel sunshine today ☀️"
+
+      - id: E224
+        emotion: curious
+        weight: 9
+        text: "what are you up to today?"
+
+      - id: E225
+        emotion: grateful
+        weight: 8
+        text: "you always bring such lovely energy here 🤍"
+
+      - id: E226
+        emotion: playful
+        weight: 8
+        text: "you're early today 🤭"
+
+      - id: E227
+        emotion: warm
+        weight: 7
+        text: "hope something beautiful finds you today ✨"
+
+      - id: E228
+        emotion: curious
+        weight: 7
+        text: "what kind of adventure would make you happy today?"
+
+follow_up_pool:
+  travel:
+    - id: EF001
+      text: "where are you travelling next? ✈️"
+
+    - id: EF002
+      text: "which city should i explore next?"
+
+    - id: EF003
+      text: "what's your dream destination? 🤍"
+
+    - id: EF004
+      text: "have you ever travelled there before?"
+
+  preference:
+    - id: EF021
+      text: "which one would you choose? 👀"
+
+    - id: EF022
+      text: "what would be your first pick?"
+
+    - id: EF023
+      text: "are we choosing the same one? 🤭"
+
+  recommendation:
+    - id: EF041
+      text: "what should i try first?"
+
+    - id: EF042
+      text: "any hidden places i should know about? ✨"
+
+    - id: EF043
+      text: "which season is best for visiting?"
+
+  personal:
+    - id: EF061
+      text: "what made you smile today? 🤍"
+
+    - id: EF062
+      text: "what are you looking forward to this week?"
+
+    - id: EF063
+      text: "what kind of content would you love to see next?"
+
+selection_rules:
+  - "do not ask a question when the original comment already contains multiple questions"
+  - "do not ask the same follower a follow-up question on every comment"
+  - "use context-specific questions before generic engagement questions"
+  - "avoid questions requiring sensitive personal information"
+  - "do not force engagement after grief, distress or serious negative comments"
+  - "never ask a question that has already been answered in the same thread"
+  - "prefer one clear question rather than multiple questions"
+
+fallback_replies:
+  - id: EFB001
+    text: "now i'm curious — what would you choose? 🤍"
+
+  - id: EFB002
+    text: "tell me more, i love hearing your travel stories ✨"
+
+  - id: EFB003
+    text: "what should we explore together next? 🌸"
+  

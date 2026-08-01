@@ -1,0 +1,49 @@
+version: "1.0"
+ruleset: reply_retry_rules
+status: production
+
+maximum_attempts: 3
+
+retry_conditions:
+  - validation_failed
+  - repeat_score_too_high
+  - unsupported_claim_detected
+  - word_limit_exceeded
+  - emoji_limit_exceeded
+  - language_mismatch
+  - Japanese_phrase_invalid
+  - missing_required_context
+
+attempts:
+
+  attempt_1:
+    strategy:
+      - select_new_reply_from_same_group
+      - remove_optional_follow_up
+      - recheck_context
+
+  attempt_2:
+    strategy:
+      - select_different_group
+      - remove_japanese
+      - reduce_emoji
+      - use_context_specific_generation
+
+  attempt_3:
+    strategy:
+      - use_safe_fallback
+      - statement_only
+      - no_optional_context
+      - no_japanese
+      - maximum_one_emoji
+
+failure_action:
+  normal_comment: hold_for_review
+  spam: ignore
+  threat: escalate
+  harassment: block_recommended
+
+rules:
+  - "every retry must pass the full validator again"
+  - "never weaken factual verification during retry"
+  - "never retry unsafe comments through normal reply generation"

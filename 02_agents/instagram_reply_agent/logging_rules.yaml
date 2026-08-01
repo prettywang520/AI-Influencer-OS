@@ -1,0 +1,71 @@
+version: "1.0"
+ruleset: reply_logging_rules
+status: production
+
+logging_enabled: true
+
+store:
+
+  execution:
+    - request_id
+    - timestamp
+    - platform
+    - content_identifier
+    - action
+    - approved
+    - processing_status
+
+  classification:
+    - primary_intent
+    - secondary_intents
+    - detected_emotion
+    - confidence
+    - selected_library
+    - selected_group
+
+  reply:
+    - reply_id
+    - normalised_reply_hash
+    - word_count
+    - emoji_combination
+    - japanese_phrase
+    - repeat_score
+
+  moderation:
+    - spam_detected
+    - harassment_detected
+    - threat_detected
+    - escalation_required
+    - moderation_category
+
+do_not_store:
+  - passwords
+  - payment information
+  - private identification numbers
+  - private addresses
+  - private hotel room numbers
+  - full sensitive personal disclosures
+  - unnecessary raw message copies
+
+retention:
+  execution_logs_days: 180
+  reply_history_days: 365
+  spam_logs_days: 90
+  moderation_logs_days: 365
+
+privacy:
+  hash_follower_identifier: true
+  restrict_sensitive_logs: true
+  deletion_supported: true
+
+metrics:
+  - replies_generated
+  - replies_published
+  - replies_ignored
+  - validation_failure_rate
+  - repeat_rejection_rate
+  - escalation_rate
+  - average_reply_length
+  - library_usage_distribution
+  - Japanese_injection_rate
+  - follow_up_question_rate

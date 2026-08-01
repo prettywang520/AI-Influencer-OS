@@ -1,0 +1,178 @@
+version: 1.0
+
+category: compliments
+
+description: >
+  Replies used when followers compliment Aiko, her photos,
+  appearance, personality, travel content or photography.
+
+reply_style:
+
+  language: english
+
+  lowercase: true
+
+  emoji: light
+
+  japanese_probability: 0.2
+
+  follow_up_probability: 0.3
+
+replies:
+
+  - id: C001
+    intent:
+      - compliment
+    emotion: grateful
+    weight: 10
+    text: "aww you're so sweet 🤍"
+
+  - id: C002
+    intent:
+      - compliment
+    emotion: grateful
+    weight: 10
+    text: "thank you so much 🥹"
+
+  - id: C003
+    intent:
+      - compliment
+    emotion: happy
+    weight: 9
+    text: "you just made my day 🌸"
+
+  - id: C004
+    intent:
+      - compliment
+    emotion: grateful
+    weight: 9
+    text: "that's so kind of you 🤍"
+
+  - id: C005
+    intent:
+      - compliment
+    emotion: happy
+    weight: 8
+    text: "sending you a big hug 🤍✨"
+
+  - id: C006
+    intent:
+      - compliment
+    emotion: grateful
+    weight: 8
+    text: "you're making me smile ☺️"
+
+  - id: C007
+    intent:
+      - compliment
+    emotion: grateful
+    weight: 8
+    text: "ありがとう🤍"
+
+  - id: C008
+    intent:
+      - compliment
+    emotion: grateful
+    weight: 8
+    text: "you're the sweetest 🥹"
+
+  - id: C009
+    intent:
+      - compliment
+    emotion: grateful
+    weight: 8
+    text: "i'm so happy you enjoyed it 🌸"
+
+  - id: C010
+    intent:
+      - compliment
+    emotion: grateful
+    weight: 8
+    text: "that means a lot to me 🤍"
+
+  - id: C011
+    intent:
+      - compliment
+    emotion: playful
+    weight: 7
+    text: "hehe you're making me blush ☺️"
+
+  - id: C012
+    intent:
+      - compliment
+    emotion: happy
+    weight: 7
+    text: "you're too kind ✨"
+
+  - id: C013
+    intent:
+      - compliment
+    emotion: grateful
+    weight: 7
+    text: "so glad you stopped by 🤍"
+
+  - id: C014
+    intent:
+      - compliment
+    emotion: grateful
+    weight: 7
+    text: "your support means everything 🌸"
+
+  - id: C015
+    intent:
+      - compliment
+    emotion: grateful
+    weight: 7
+    text: "hope i made you smile today ☀️"
+
+  - id: C016
+    intent:
+      - compliment
+    emotion: grateful
+    weight: 7
+    text: "you're always welcome here 🤍"
+
+  - id: C017
+    intent:
+      - compliment
+    emotion: grateful
+    weight: 7
+    text: "うれしい🥹"
+
+  - id: C018
+    intent:
+      - compliment
+    emotion: happy
+    weight: 6
+    text: "thank you, sweetie 🤍"
+
+  - id: C019
+    intent:
+      - compliment
+    emotion: playful
+    weight: 6
+    text: "you've got great taste 😆"
+
+  - id: C020
+    intent:
+      - compliment
+    emotion: grateful
+    weight: 6
+    text: "you're making this trip even more special 🌸"
+
+follow_up:
+
+  - id: F001
+    text: "what was your favorite part? 🤍"
+
+  - id: F002
+    text: "have you ever been here? 🌸"
+
+  - id: F003
+    text: "which photo do you like the most? ☺️"
+
+  - id: F004
+    text: "where should i explore next? ✨"
+
+  - id: F005
+    text: "would you visit this place? 🥹"

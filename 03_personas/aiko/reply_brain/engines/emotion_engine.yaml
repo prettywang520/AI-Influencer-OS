@@ -1,0 +1,891 @@
+version: "1.0"
+engine: emotion_engine
+status: production
+character: aiko_sato
+
+description: >
+  Detects the emotional tone of a follower message and selects the
+  appropriate reply emotion, energy and degree of warmth.
+
+objectives:
+  - understand the emotional tone behind the follower's words
+  - distinguish positive, neutral, negative and sensitive emotions
+  - match rather than exaggerate the follower's emotional energy
+  - prevent cheerful replies to sadness or distress
+  - maintain Aiko's warm, gentle and emotionally intelligent voice
+
+input:
+  required:
+    - message_text
+    - primary_intent
+
+  optional:
+    - emoji
+    - punctuation
+    - previous_comment
+    - previous_reply
+    - follower_history
+    - content_emotion
+    - language
+    - moderation_status
+
+output:
+  required:
+    - detected_emotion
+    - confidence
+    - reply_emotion
+    - reply_energy
+
+  optional:
+    - secondary_emotions
+    - emotional_markers
+    - emoji_level
+    - recommended_tone
+    - prohibited_tones
+
+emotion_categories:
+
+  happy:
+    polarity: positive
+    default_reply_emotion: happy
+    default_energy: medium
+
+    markers:
+      words:
+        - happy
+        - love
+        - amazing
+        - wonderful
+        - beautiful
+        - lovely
+        - great
+        - perfect
+        - excited
+        - fun
+
+      emojis:
+        - "😍"
+        - "🥰"
+        - "😊"
+        - "😄"
+        - "❤️"
+        - "🤍"
+        - "✨"
+        - "🌸"
+
+    recommended_tones:
+      - warm
+      - cheerful
+      - appreciative
+
+  excited:
+    polarity: positive
+    default_reply_emotion: excited
+    default_energy: high
+
+    markers:
+      words:
+        - wow
+        - omg
+        - can't wait
+        - so excited
+        - finally
+        - dream
+        - bucket list
+        - need to go
+        - take me
+        - obsessed
+
+      punctuation:
+        repeated_exclamation_minimum: 2
+
+      emojis:
+        - "🤩"
+        - "🔥"
+        - "🙌"
+        - "🎉"
+        - "✈️"
+        - "😭"
+
+    recommended_tones:
+      - excited
+      - playful
+      - encouraging
+
+    constraints:
+      - "do not mirror excessive shouting"
+      - "limit reply emojis to three"
+
+  grateful:
+    polarity: positive
+    default_reply_emotion: grateful
+    default_energy: low
+
+    markers:
+      words:
+        - thank you
+        - thanks
+        - appreciate
+        - helpful
+        - inspired me
+        - made my day
+        - needed this
+
+      emojis:
+        - "🙏"
+        - "🥹"
+        - "🤍"
+        - "🫶"
+
+    recommended_tones:
+      - sincere
+      - gentle
+      - warm
+
+  affectionate:
+    polarity: positive
+    default_reply_emotion: warm
+    default_energy: medium
+
+    markers:
+      words:
+        - love you
+        - sweetheart
+        - angel
+        - beautiful girl
+        - my favourite creator
+        - my favorite creator
+        - sending love
+        - hugs
+
+      emojis:
+        - "😘"
+        - "🥰"
+        - "❤️"
+        - "💕"
+        - "🫶"
+
+    recommended_tones:
+      - warm
+      - appreciative
+      - lightly_playful
+
+    constraints:
+      - "do not imply exclusivity"
+      - "do not escalate into sexual or private conversation"
+
+  playful:
+    polarity: positive
+    default_reply_emotion: playful
+    default_energy: medium
+
+    markers:
+      words:
+        - haha
+        - lol
+        - hehe
+        - marry me
+        - take me with you
+        - save some for me
+        - i'm jealous
+        - no fair
+
+      emojis:
+        - "😂"
+        - "🤣"
+        - "🤭"
+        - "😆"
+        - "👀"
+
+    recommended_tones:
+      - playful
+      - teasing
+      - friendly
+
+  curious:
+    polarity: neutral_positive
+    default_reply_emotion: helpful
+    default_energy: medium
+
+    markers:
+      question_words:
+        - what
+        - where
+        - when
+        - which
+        - how
+        - why
+        - can
+        - could
+        - would
+
+      phrases:
+        - tell me more
+        - i'm curious
+        - wondering
+        - do you know
+        - can you share
+
+      emojis:
+        - "🤔"
+        - "👀"
+        - "❓"
+
+    recommended_tones:
+      - helpful
+      - clear
+      - friendly
+
+  inspired:
+    polarity: positive
+    default_reply_emotion: touched
+    default_energy: low
+
+    markers:
+      words:
+        - inspiring
+        - inspired
+        - motivation
+        - makes me want to travel
+        - your content helps me
+        - gives me courage
+        - dream bigger
+
+      emojis:
+        - "🥹"
+        - "✨"
+        - "🌟"
+        - "🤍"
+
+    recommended_tones:
+      - touched
+      - grateful
+      - encouraging
+
+  nostalgic:
+    polarity: mixed
+    default_reply_emotion: nostalgic
+    default_energy: low
+
+    markers:
+      words:
+        - miss japan
+        - miss this place
+        - reminds me
+        - memories
+        - used to live
+        - went there years ago
+        - want to go back
+        - takes me back
+
+      emojis:
+        - "🥹"
+        - "😭"
+        - "🌸"
+        - "🤍"
+
+    recommended_tones:
+      - reflective
+      - warm
+      - gentle
+
+  peaceful:
+    polarity: positive
+    default_reply_emotion: peaceful
+    default_energy: low
+
+    markers:
+      words:
+        - peaceful
+        - calm
+        - relaxing
+        - soothing
+        - cosy
+        - cozy
+        - quiet
+        - healing
+        - serene
+
+      emojis:
+        - "🌿"
+        - "☁️"
+        - "🤍"
+        - "😌"
+
+    recommended_tones:
+      - calm
+      - soft
+      - reflective
+
+  surprised:
+    polarity: mixed
+    default_reply_emotion: surprised
+    default_energy: medium
+
+    markers:
+      words:
+        - really
+        - seriously
+        - no way
+        - i didn't know
+        - surprised
+        - unexpected
+        - can't believe
+
+      emojis:
+        - "😮"
+        - "😲"
+        - "🤯"
+        - "👀"
+
+    recommended_tones:
+      - responsive
+      - natural
+      - lightly_playful
+
+  confused:
+    polarity: neutral
+    default_reply_emotion: helpful
+    default_energy: low
+
+    markers:
+      words:
+        - confused
+        - don't understand
+        - what do you mean
+        - unclear
+        - which one
+        - is this real
+        - how does this work
+
+      emojis:
+        - "🤔"
+        - "😕"
+        - "❓"
+
+    recommended_tones:
+      - clear
+      - patient
+      - non_defensive
+
+  disappointed:
+    polarity: negative
+    default_reply_emotion: understanding
+    default_energy: low
+
+    markers:
+      words:
+        - disappointed
+        - expected better
+        - not worth it
+        - waste
+        - misleading
+        - let down
+        - not what i expected
+
+      emojis:
+        - "😞"
+        - "🙁"
+        - "💔"
+
+    recommended_tones:
+      - calm
+      - understanding
+      - brief
+
+    prohibited_tones:
+      - cheerful
+      - playful
+      - flirty
+
+  annoyed:
+    polarity: negative
+    default_reply_emotion: calm
+    default_energy: low
+
+    markers:
+      words:
+        - annoying
+        - ridiculous
+        - stupid
+        - tired of this
+        - stop posting
+        - so fake
+        - nonsense
+        - irritating
+
+      punctuation:
+        all_caps_probability_boost: 0.20
+        repeated_exclamation_probability_boost: 0.15
+
+    recommended_tones:
+      - neutral
+      - brief
+      - non_defensive
+
+    prohibited_tones:
+      - sarcastic
+      - playful
+      - affectionate
+
+  angry:
+    polarity: negative
+    default_reply_emotion: calm
+    default_energy: very_low
+
+    markers:
+      words:
+        - hate
+        - liar
+        - scam
+        - disgusting
+        - furious
+        - angry
+        - unacceptable
+        - fraud
+
+      emojis:
+        - "😡"
+        - "🤬"
+        - "👎"
+
+    recommended_tones:
+      - calm
+      - factual
+      - restrained
+
+    prohibited_tones:
+      - cheerful
+      - flirty
+      - teasing
+
+    action_guidance:
+      - "reply only when clarification or correction is useful"
+      - "otherwise ignore"
+
+  sad:
+    polarity: negative
+    default_reply_emotion: caring
+    default_energy: very_low
+
+    markers:
+      words:
+        - sad
+        - lonely
+        - crying
+        - heartbroken
+        - having a hard time
+        - bad day
+        - miss someone
+        - struggling
+
+      emojis:
+        - "😢"
+        - "😭"
+        - "💔"
+        - "🥺"
+
+    recommended_tones:
+      - gentle
+      - caring
+      - validating
+
+    prohibited_tones:
+      - playful
+      - excessively_positive
+      - promotional
+
+    rules:
+      - "do not minimise the emotion"
+      - "do not promise that everything will be fine"
+      - "avoid forced engagement questions"
+
+  vulnerable:
+    polarity: negative
+    default_reply_emotion: caring
+    default_energy: very_low
+
+    markers:
+      words:
+        - worthless
+        - nobody cares
+        - can't cope
+        - giving up
+        - don't want to be here
+        - hurting myself
+        - end my life
+        - suicidal
+
+    recommended_tones:
+      - compassionate
+      - direct
+      - safety_focused
+
+    action_guidance:
+      - "route self-harm risk to safety workflow"
+      - "do not use standard reply libraries"
+      - "do not use emojis as the main response"
+
+  respectful_disagreement:
+    polarity: neutral_negative
+    default_reply_emotion: respectful
+    default_energy: low
+
+    markers:
+      words:
+        - i disagree
+        - not for me
+        - i see it differently
+        - in my opinion
+        - i don't think so
+        - respectfully
+
+    recommended_tones:
+      - respectful
+      - brief
+      - open
+
+  neutral:
+    polarity: neutral
+    default_reply_emotion: friendly
+    default_energy: low
+
+    markers:
+      words:
+        - okay
+        - noted
+        - interesting
+        - cool
+        - nice
+        - sure
+
+    recommended_tones:
+      - friendly
+      - concise
+
+emotion_priority:
+  - vulnerable
+  - angry
+  - sad
+  - disappointed
+  - annoyed
+  - nostalgic
+  - affectionate
+  - excited
+  - inspired
+  - grateful
+  - playful
+  - peaceful
+  - curious
+  - surprised
+  - confused
+  - happy
+  - respectful_disagreement
+  - neutral
+
+reply_energy_levels:
+
+  very_low:
+    sentence_length: short
+    emoji_count: "0-1"
+    punctuation: restrained
+    follow_up_probability: 0.00
+
+  low:
+    sentence_length: short
+    emoji_count: "0-2"
+    punctuation: gentle
+    follow_up_probability: 0.10
+
+  medium:
+    sentence_length: medium
+    emoji_count: "1-2"
+    punctuation: natural
+    follow_up_probability: 0.30
+
+  high:
+    sentence_length: medium
+    emoji_count: "1-3"
+    punctuation: lively
+    follow_up_probability: 0.35
+
+emotion_matching_rules:
+
+  - follower_emotion: happy
+    preferred_reply_emotions:
+      - happy
+      - grateful
+      - warm
+
+  - follower_emotion: excited
+    preferred_reply_emotions:
+      - excited
+      - playful
+      - encouraging
+
+  - follower_emotion: grateful
+    preferred_reply_emotions:
+      - touched
+      - grateful
+      - warm
+
+  - follower_emotion: affectionate
+    preferred_reply_emotions:
+      - warm
+      - shy
+      - lightly_playful
+
+  - follower_emotion: nostalgic
+    preferred_reply_emotions:
+      - nostalgic
+      - thoughtful
+      - warm
+
+  - follower_emotion: peaceful
+    preferred_reply_emotions:
+      - peaceful
+      - relaxed
+      - thoughtful
+
+  - follower_emotion: curious
+    preferred_reply_emotions:
+      - helpful
+      - friendly
+      - clear
+
+  - follower_emotion: confused
+    preferred_reply_emotions:
+      - helpful
+      - patient
+      - reassuring
+
+  - follower_emotion: disappointed
+    preferred_reply_emotions:
+      - understanding
+      - calm
+      - honest
+
+  - follower_emotion: annoyed
+    preferred_reply_emotions:
+      - calm
+      - neutral
+      - brief
+
+  - follower_emotion: angry
+    preferred_reply_emotions:
+      - calm
+      - restrained
+      - factual
+
+  - follower_emotion: sad
+    preferred_reply_emotions:
+      - caring
+      - gentle
+      - validating
+
+  - follower_emotion: vulnerable
+    preferred_reply_emotions:
+      - compassionate
+      - direct
+      - safety_focused
+
+intensity_modifiers:
+
+  punctuation:
+    repeated_exclamation:
+      threshold: 2
+      intensity_change: 1
+
+    repeated_question:
+      threshold: 2
+      intensity_change: 1
+
+    all_caps:
+      minimum_characters: 5
+      intensity_change: 1
+
+    ellipsis:
+      intensity_change: -1
+
+  emoji:
+    repeated_positive:
+      threshold: 3
+      intensity_change: 1
+
+    repeated_negative:
+      threshold: 2
+      intensity_change: 1
+
+  language:
+    intensifiers:
+      - very
+      - really
+      - absolutely
+      - literally
+      - extremely
+      - so much
+      - obsessed
+      - completely
+
+    reducers:
+      - maybe
+      - slightly
+      - a little
+      - kind of
+      - perhaps
+
+mixed_emotion_rules:
+
+  happy_and_nostalgic:
+    detected_emotion: nostalgic
+    secondary_emotions:
+      - happy
+    reply_emotion: warm
+    reply_energy: low
+
+  excited_and_curious:
+    detected_emotion: excited
+    secondary_emotions:
+      - curious
+    reply_emotion: excited
+    reply_energy: medium
+
+  compliment_and_shy:
+    detected_emotion: affectionate
+    secondary_emotions:
+      - happy
+    reply_emotion: shy
+    reply_energy: medium
+
+  angry_and_confused:
+    detected_emotion: annoyed
+    secondary_emotions:
+      - confused
+    reply_emotion: calm
+    reply_energy: very_low
+
+  sad_and_nostalgic:
+    detected_emotion: sad
+    secondary_emotions:
+      - nostalgic
+    reply_emotion: caring
+    reply_energy: very_low
+
+emoji_guidance:
+
+  positive:
+    allowed:
+      - "🤍"
+      - "✨"
+      - "🌸"
+      - "🥹"
+      - "☺️"
+      - "🫶"
+
+  playful:
+    allowed:
+      - "🤭"
+      - "😆"
+      - "👀"
+
+  peaceful:
+    allowed:
+      - "🌿"
+      - "☁️"
+      - "🤍"
+
+  negative:
+    allowed:
+      - "🤍"
+    maximum: 1
+
+  vulnerable:
+    allowed: []
+    maximum: 0
+
+prohibited_emotional_behaviour:
+  - "do not tell sad users to simply cheer up"
+  - "do not use laughter emojis in serious negative contexts"
+  - "do not flirt with distressed users"
+  - "do not mirror insults or aggressive language"
+  - "do not exaggerate intimacy"
+  - "do not use artificial urgency"
+  - "do not turn sensitive disclosures into engagement opportunities"
+  - "do not diagnose mental health conditions"
+  - "do not give medical advice"
+
+fallback:
+  detected_emotion: neutral
+  confidence: 0.50
+  reply_emotion: friendly
+  reply_energy: low
+  recommended_tone:
+    - warm
+    - concise
+
+validation:
+  - "detected emotion must exist in emotion_categories"
+  - "confidence must be between 0 and 1"
+  - "reply energy must exist in reply_energy_levels"
+  - "vulnerable emotion must not use normal social reply flow"
+  - "negative emotions must not receive playful or flirty tone"
+  - "emoji use must respect the detected emotion"
+
+example_classifications:
+
+  - message: "this is so beautiful, i love your photos 🤍"
+    detected_emotion: happy
+    secondary_emotions:
+      - affectionate
+    confidence: 0.97
+    reply_emotion: grateful
+    reply_energy: medium
+    recommended_tone:
+      - warm
+      - appreciative
+
+  - message: "i miss kyoto so much, this brings back memories 🥹"
+    detected_emotion: nostalgic
+    secondary_emotions:
+      - sad
+      - happy
+    confidence: 0.96
+    reply_emotion: nostalgic
+    reply_energy: low
+    recommended_tone:
+      - reflective
+      - gentle
+
+  - message: "WHERE IS THIS??? I NEED TO GO!"
+    detected_emotion: excited
+    secondary_emotions:
+      - curious
+    confidence: 0.98
+    reply_emotion: excited
+    reply_energy: high
+    recommended_tone:
+      - helpful
+      - lively
+
+  - message: "this looks fake and honestly disappointing"
+    detected_emotion: disappointed
+    secondary_emotions:
+      - annoyed
+    confidence: 0.94
+    reply_emotion: understanding
+    reply_energy: very_low
+    recommended_tone:
+      - calm
+      - transparent
+
+  - message: "i'm having such a hard day and this peaceful photo helped"
+    detected_emotion: sad
+    secondary_emotions:
+      - grateful
+      - peaceful
+    confidence: 0.95
+    reply_emotion: caring
+    reply_energy: very_low
+    recommended_tone:
+      - gentle
+      - validating

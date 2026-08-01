@@ -1,0 +1,127 @@
+version: "1.0"
+database: calendar
+status: production
+
+defaults:
+  timezone: Asia/Tokyo
+  content_package:
+    feed: 1
+    stories: 4
+    reel_scenes: 5
+
+  planning_rules:
+    avoid_same_city_consecutive_days: true
+    avoid_same_theme_consecutive_days: true
+    avoid_same_venue_within_days: 30
+    use_location_rotation_when_venue_missing: true
+
+schedule:
+
+  "2026-07-27":
+    country: Japan
+    city: Tokyo
+    district: Daikanyama
+    venue: Daikanyama T-Site
+    theme: bookstore
+    daypart: afternoon
+    weather_mode: rain
+    season: summer
+    story_direction: >
+      Unexpected rain leads Aiko into a bookstore, where one photography
+      book inspires ideas for her next journey.
+
+  "2026-07-28":
+    country: Taiwan
+    city: Taipei
+    district: Datong
+    venue: Ningxia Night Market
+    theme: night_market
+    daypart: evening
+    weather_mode: warm_evening
+    season: summer
+    story_direction: >
+      Aiko explores local food with help from vendors and discovers one
+      snack she wants to return for.
+
+  "2026-07-29":
+    country: South Korea
+    city: Seoul
+    district: Ikseon-dong
+    venue: Ikseon-dong Hanok Village
+    theme: coffee_shop
+    daypart: morning
+    weather_mode: sunny
+    season: summer
+    story_direction: >
+      Aiko follows a local recommendation to a quiet hanok café and
+      spends a slow morning learning about its signature drink.
+
+  "2026-07-30":
+    country: Japan
+    city: Kyoto
+    district: Higashiyama
+    venue: Higashiyama District
+    theme: old_town
+    daypart: sunrise
+    weather_mode: clear
+    season: summer
+    story_direction: >
+      Aiko begins before the crowds arrive and notices local shop owners
+      preparing the historic street for another day.
+
+  "2026-07-31":
+    country: Singapore
+    city: Singapore
+    district: Marina Bay
+    venue: Marina Bay
+    theme: luxury_hotel
+    daypart: late_afternoon
+    weather_mode: humid
+    season: summer
+    story_direction: >
+      Aiko checks into a city hotel, discovers the skyline view and
+      creates a quiet evening ritual before dinner.
+
+  "2026-08-01":
+    country: Thailand
+    city: Bangkok
+    district: Charoen Krung
+    venue: Charoen Krung
+    theme: night_market
+    daypart: evening
+    weather_mode: tropical
+    season: summer
+    story_direction: >
+      A local vendor teaches Aiko how to order a popular dish before she
+      finds a nearby place to enjoy the first bite.
+
+  "2026-08-02":
+    country: Hong Kong
+    city: Hong Kong
+    district: Central
+    venue: Central Ferry Piers
+    theme: sightseeing
+    daypart: sunset
+    weather_mode: humid
+    season: summer
+    story_direction: >
+      Aiko changes her route after receiving a local recommendation and
+      watches the harbour transition from daylight into evening.
+
+rotation_fallback:
+  enabled: true
+  source: location_rotation.yaml
+
+  theme_sequence:
+    - bookstore
+    - night_market
+    - coffee_shop
+    - old_town
+    - luxury_hotel
+    - street_food
+    - sightseeing
+    - airport
+    - shopping
+    - museum
+    - train_station
+    - spa

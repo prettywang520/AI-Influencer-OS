@@ -1,0 +1,28 @@
+coffee_shop:
+  arrival:
+    - id: brush_hair_while_entering
+      text: "brushes windblown hair behind one ear while stepping through the café entrance"
+
+    - id: adjust_bag_and_scan_room
+      text: "adjusts her shoulder bag while naturally scanning the room for an empty seat"
+
+  discovery:
+    - id: lean_toward_menu
+      text: "leans slightly toward the counter and points at one item on the menu"
+
+    - id: react_to_barista
+      text: "tilts her head, listens closely, then gives a small amused reaction"
+
+  experience:
+    - id: watch_drink_preparation
+      text: "rests one hand lightly on the counter while following the barista's hands with her eyes"
+
+    - id: first_sip_reaction
+      text: "takes a first sip, pauses naturally, then lifts her eyebrows in quiet surprise"
+
+  leaving:
+    - id: pack_camera_while_turning
+      text: "slides the camera into her bag while turning slightly to thank the staff"
+
+    - id: fix_sleeve_and_leave
+      text: "adjusts one sleeve, picks up her bag and steps toward the door"

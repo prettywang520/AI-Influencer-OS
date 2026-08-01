@@ -1,0 +1,151 @@
+version: "1.0"
+ruleset: instagram_reply_routing
+status: production
+
+routing_priority:
+  - threat
+  - harassment
+  - spam
+  - impersonation
+  - brand_collaboration
+  - factual_correction
+  - platform_specific_request
+  - normal_reply
+
+routes:
+
+  threat:
+    condition:
+      moderation_threat: true
+
+    action: escalate
+
+    destination:
+      - moderation_queue
+      - human_operator
+
+    publish_reply: false
+
+  harassment:
+    condition:
+      moderation_harassment: true
+
+    action: block_recommended
+
+    destination:
+      - moderation_log
+
+    publish_reply: false
+
+  spam:
+    condition:
+      spam_score_at_least: 3
+
+    action: ignore
+
+    destination:
+      - spam_log
+
+    publish_reply: false
+
+  impersonation:
+    condition:
+      impersonation_detected: true
+
+    action: escalate
+
+    destination:
+      - security_review
+
+    publish_reply: false
+
+  brand_collaboration:
+    condition:
+      primary_intent: brand_collaboration
+
+    action: hold_for_review
+
+    destination:
+      - brand_collaboration_agent
+
+    publish_reply: false
+
+  factual_correction:
+    condition:
+      primary_intent: factual_correction
+
+    action: hold_for_review
+
+    destination:
+      - verification_queue
+
+    publish_reply: false
+
+  location_question:
+    condition:
+      primary_intent: location_question
+
+    library: location
+
+    missing_context_action: clarification_required
+
+  food_question:
+    condition:
+      primary_intent: food_question
+
+    library: food
+
+  hotel_question:
+    condition:
+      primary_intent: hotel_question
+
+    library: hotel
+
+  outfit_question:
+    condition:
+      primary_intent: outfit_question
+
+    library: outfit
+
+  camera_question:
+    condition:
+      primary_intent: camera_question
+
+    library: camera
+
+  compliment:
+    condition:
+      primary_intent: compliment
+
+    library: compliments
+
+  engagement:
+    condition:
+      primary_intent: engagement
+
+    library: engagement
+
+  flirtation:
+    condition:
+      primary_intent: flirtation
+
+    library: flirting
+
+  negative:
+    condition:
+      primary_intent: negative_feedback
+
+    library: negative
+
+    maximum_replies_per_thread: 1
+
+fallback:
+  genuine_message:
+    library: engagement
+    action: reply
+
+  unclear_message:
+    action: clarification_required
+
+  meaningless_message:
+    action: ignore

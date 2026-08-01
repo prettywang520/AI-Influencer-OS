@@ -1,0 +1,13 @@
+generate:
+
+  images: true
+
+  captions: true
+
+  hashtags: true
+
+save:
+
+  prompts: true
+
+  captions: true

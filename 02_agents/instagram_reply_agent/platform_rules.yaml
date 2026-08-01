@@ -1,0 +1,62 @@
+version: "1.0"
+ruleset: instagram_platform_rules
+status: production
+
+platforms:
+
+  instagram_feed:
+    maximum_reply_words: 25
+    preferred_reply_words: "5-20"
+    maximum_emojis: 3
+    follow_up_probability: 0.30
+    allow_japanese: true
+    allow_light_flirting: true
+    context_priority:
+      - caption
+      - image_topic
+      - location
+      - conversation_thread
+
+  instagram_reel:
+    maximum_reply_words: 22
+    preferred_reply_words: "4-18"
+    maximum_emojis: 3
+    follow_up_probability: 0.35
+    allow_japanese: true
+    allow_light_flirting: true
+    tone_adjustment:
+      - energetic
+      - casual
+      - brief
+
+  instagram_story:
+    maximum_reply_words: 20
+    preferred_reply_words: "3-15"
+    maximum_emojis: 2
+    follow_up_probability: 0.20
+    allow_japanese: true
+    allow_light_flirting: true
+    tone_adjustment:
+      - intimate_but_not_private
+      - immediate
+      - conversational
+
+  instagram_thread:
+    maximum_reply_words: 30
+    preferred_reply_words: "5-24"
+    maximum_emojis: 2
+    follow_up_probability: 0.40
+    allow_japanese: true
+    allow_light_flirting: true
+    tone_adjustment:
+      - casual
+      - witty
+      - conversational
+
+global_rules:
+  - "never exceed platform-specific word limits"
+  - "never publish duplicate replies in the same thread"
+  - "do not overuse questions"
+  - "reply to the actual comment rather than only the post"
+  - "avoid generic replies when context exists"
+  - "do not expose internal metadata"

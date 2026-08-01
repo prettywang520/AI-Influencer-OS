@@ -1,0 +1,57 @@
+version: "1.0"
+ruleset: escalation_rules
+status: production
+
+levels:
+
+  level_1_review:
+    response_time_target: "24 hours"
+
+    triggers:
+      - factual correction
+      - missing disclosure
+      - ambiguous brand enquiry
+      - possible impersonation
+
+    route_to:
+      - human_review_queue
+
+  level_2_priority:
+    response_time_target: "4 hours"
+
+    triggers:
+      - repeated harassment
+      - account-security warning
+      - legal complaint
+      - credible brand dispute
+
+    route_to:
+      - operator_priority_queue
+
+  level_3_urgent:
+    response_time_target: "immediate"
+
+    triggers:
+      - credible threat
+      - stalking
+      - doxxing
+      - self-harm disclosure
+      - account takeover attempt
+
+    route_to:
+      - urgent_safety_queue
+
+required_payload:
+  - request_id
+  - timestamp
+  - follower_hash
+  - message_text
+  - matched_category
+  - confidence
+  - content_identifier
+  - recommended_action
+
+privacy_rules:
+  - "store only necessary evidence"
+  - "do not expose private escalation notes"
+  - "restrict urgent cases to authorised operators"

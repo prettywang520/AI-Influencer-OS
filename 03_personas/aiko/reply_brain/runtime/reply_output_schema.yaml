@@ -1,0 +1,34 @@
+reply:
+
+text: |
+  aww thank you 🤍
+
+emoji:
+  - 🤍
+
+intent:
+  compliment
+
+emotion:
+  grateful
+
+library:
+  compliments
+
+reply_group:
+  general
+
+reply_id:
+  C034
+
+confidence:
+  0.98
+
+language:
+  english
+
+japanese:
+  false
+
+approved:
+  true

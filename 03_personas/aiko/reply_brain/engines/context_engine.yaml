@@ -1,0 +1,771 @@
+version: "1.0"
+engine: context_engine
+status: production
+character: aiko_sato
+
+description: >
+  Builds the verified context used by the Reply Brain before a reply is
+  selected. It connects the follower comment with the current post,
+  Aiko's persona, campaign disclosures, conversation history and
+  production metadata.
+
+objectives:
+  - understand what the follower is responding to
+  - provide verified facts to reply libraries
+  - prevent invented locations, products, prices and equipment
+  - maintain continuity across comment threads
+  - distinguish real-world facts from fictional or AI-generated content
+  - support more specific replies without exposing private information
+
+input_sources:
+
+  current_message:
+    priority: critical
+    fields:
+      - message_text
+      - message_language
+      - follower_identifier
+      - comment_timestamp
+      - parent_comment
+      - platform
+      - content_identifier
+
+  current_content:
+    priority: critical
+    fields:
+      - content_type
+      - post_caption
+      - story_caption
+      - reel_caption
+      - current_topic
+      - current_location
+      - current_city
+      - current_country
+      - current_venue
+      - current_activity
+      - current_emotion
+      - current_food
+      - current_hotel
+      - current_outfit
+      - current_product
+      - current_camera
+      - current_story_stage
+      - ai_generated
+      - sponsored
+      - gifted
+
+  production_metadata:
+    priority: high
+    fields:
+      - prompt_id
+      - production_date
+      - verified_venue
+      - verified_brand
+      - verified_product
+      - verified_camera_metadata
+      - verified_price
+      - disclosure_text
+      - campaign_id
+      - photographer_credit
+
+  conversation_history:
+    priority: medium
+    fields:
+      - previous_comments
+      - previous_replies
+      - unresolved_question
+      - last_reply_timestamp
+      - previously_shared_facts
+      - previous_reply_ids
+      - previous_emoji_combinations
+
+  follower_memory:
+    priority: low
+    fields:
+      - preferred_name
+      - known_language
+      - known_city
+      - travel_interests
+      - previous_destinations_mentioned
+      - recurring_commenter
+      - previous_boundaries
+      - moderation_status
+
+  persona_context:
+    priority: stable
+    fields:
+      - character_name
+      - nationality
+      - languages
+      - occupation
+      - tone
+      - public_preferences
+      - prohibited_topics
+      - response_style
+
+output:
+  required:
+    - resolved_context
+    - verification_status
+    - missing_fields
+    - allowed_claims
+    - prohibited_claims
+
+  optional:
+    - selected_topic
+    - selected_activity
+    - selected_location
+    - conversation_summary
+    - disclosure_required
+    - escalation_required
+    - context_confidence
+
+verification_levels:
+
+  verified:
+    score: 1.00
+    description: >
+      Information is explicitly stored in current content or production
+      metadata and may be stated directly.
+
+  strongly_supported:
+    score: 0.80
+    description: >
+      Information is supported by multiple context fields but is not
+      explicitly marked verified.
+
+  inferred:
+    score: 0.55
+    description: >
+      Information is a reasonable inference but must not be stated as
+      confirmed fact.
+
+  unknown:
+    score: 0.00
+    description: >
+      Information is absent, contradictory or unreliable and must not be
+      invented.
+
+source_priority:
+  - production_metadata
+  - current_content
+  - current_message
+  - conversation_history
+  - follower_memory
+  - persona_context
+  - model_inference
+
+conflict_resolution:
+  rules:
+    - "verified production metadata overrides captions and comments"
+    - "current content overrides older conversation history"
+    - "explicit follower correction does not become fact until verified"
+    - "persona context must not overwrite current content facts"
+    - "model inference never overrides verified data"
+    - "when two verified fields conflict, block the claim and flag for review"
+
+context_schema:
+
+  content:
+    content_type:
+      allowed:
+        - feed
+        - story
+        - reel
+        - thread
+        - direct_message
+
+    content_identifier:
+      type: string
+
+    post_topic:
+      type: string
+      examples:
+        - bookstore
+        - hotel
+        - night_market
+        - airport
+        - shopping
+        - cafe
+
+    story_stage:
+      allowed:
+        - arrival
+        - discovery
+        - experience
+        - quiet_moment
+        - purchase
+        - leaving
+        - hero_moment
+
+  location:
+    venue_name:
+      type: string
+      verification_required: true
+
+    district:
+      type: string
+
+    city:
+      type: string
+
+    country:
+      type: string
+
+    address:
+      type: string
+      verification_required: true
+
+    map_link:
+      type: string
+      verification_required: true
+
+  activity:
+    primary_behavior:
+      type: string
+
+    interaction:
+      type: string
+
+    emotion:
+      type: string
+
+    daily_details:
+      type: list
+
+  travel:
+    destination:
+      type: string
+
+    transport_method:
+      type: string
+
+    itinerary:
+      type: list
+      verification_required: true
+
+    trip_duration:
+      type: string
+      verification_required: true
+
+    travel_date:
+      type: date
+      verification_required: true
+
+  food:
+    dish_name:
+      type: string
+      verification_required: true
+
+    venue_name:
+      type: string
+      verification_required: true
+
+    flavour_description:
+      type: string
+      verification_required: false
+
+    price:
+      type: string
+      verification_required: true
+
+    allergen_information:
+      type: string
+      verification_required: true
+      high_risk: true
+
+    dietary_status:
+      type: string
+      verification_required: true
+      high_risk: true
+
+  hotel:
+    hotel_name:
+      type: string
+      verification_required: true
+
+    room_type:
+      type: string
+      verification_required: true
+
+    price:
+      type: string
+      verification_required: true
+
+    included_services:
+      type: list
+      verification_required: true
+
+    partnership_status:
+      allowed:
+        - organic
+        - sponsored
+        - gifted
+        - hosted
+        - unknown
+
+    disclosure_required:
+      type: boolean
+
+  product:
+    product_name:
+      type: string
+      verification_required: true
+
+    product_brand:
+      type: string
+      verification_required: true
+
+    price:
+      type: string
+      verification_required: true
+
+    purchase_location:
+      type: string
+      verification_required: true
+
+    affiliate_link:
+      type: string
+      verification_required: true
+
+    sponsored:
+      type: boolean
+
+    gifted:
+      type: boolean
+
+  outfit:
+    outfit_name:
+      type: string
+      verification_required: true
+
+    outfit_brand:
+      type: string
+      verification_required: true
+
+    dress_name:
+      type: string
+      verification_required: true
+
+    dress_brand:
+      type: string
+      verification_required: true
+
+    bag_brand:
+      type: string
+      verification_required: true
+
+    shoe_brand:
+      type: string
+      verification_required: true
+
+    size:
+      type: string
+      verification_required: true
+      personal_data: true
+
+  camera:
+    ai_generated:
+      type: boolean
+
+    camera_model:
+      type: string
+      verification_required: true
+
+    lens_model:
+      type: string
+      verification_required: true
+
+    focal_length:
+      type: string
+      verification_required: true
+
+    aperture:
+      type: string
+      verification_required: true
+
+    shutter_speed:
+      type: string
+      verification_required: true
+
+    iso:
+      type: string
+      verification_required: true
+
+    photographer:
+      type: string
+      verification_required: true
+
+    editing_software:
+      type: string
+      verification_required: true
+
+    preset_name:
+      type: string
+      verification_required: true
+
+  follower:
+    preferred_name:
+      type: string
+      use_only_when_verified: true
+
+    language:
+      type: string
+
+    city:
+      type: string
+      use_only_when_follower_shared_publicly: true
+
+    recurring_commenter:
+      type: boolean
+
+    prior_boundary:
+      type: boolean
+
+  campaign:
+    campaign_id:
+      type: string
+
+    sponsored:
+      type: boolean
+
+    gifted:
+      type: boolean
+
+    hosted:
+      type: boolean
+
+    disclosure_text:
+      type: string
+      verification_required: true
+
+    usage_rights:
+      type: string
+      restricted: true
+
+claim_rules:
+
+  always_allowed:
+    - "Aiko's general emotional reaction when defined by current content"
+    - "the verified city or country"
+    - "the current story activity"
+    - "general personal preferences stored in persona context"
+    - "creative interpretation clearly framed as personal feeling"
+
+  verification_required:
+    - venue name
+    - address
+    - opening hours
+    - price
+    - availability
+    - hotel name
+    - room type
+    - product brand
+    - product name
+    - clothing brand
+    - affiliate link
+    - camera model
+    - lens model
+    - camera settings
+    - photographer credit
+    - sponsorship status
+    - food allergens
+    - transport schedule
+    - travel restrictions
+
+  prohibited_without_verification:
+    - "this is definitely open today"
+    - "the room costs exactly..."
+    - "this contains no allergens"
+    - "i shot this with..."
+    - "this dress is from..."
+    - "the hotel gave me a free upgrade"
+    - "you can book through this link"
+    - "this place is completely safe"
+    - "the food is suitable for all diets"
+
+ai_content_rules:
+
+  when_ai_generated_is_true:
+    allowed_claims:
+      - "this visual is part of a digital travel storytelling project"
+      - "the scene was designed as an editorial travel moment"
+      - "the creative direction focused on light, movement and story"
+
+    prohibited_claims:
+      - "i personally visited this exact place"
+      - "i photographed this with a physical camera"
+      - "this spontaneous moment really happened"
+      - "the food genuinely tasted delicious"
+      - "the hotel personally provided this room"
+      - "the named person physically interacted with Aiko"
+
+    response_strategy:
+      - "be transparent when directly asked"
+      - "do not unnecessarily interrupt ordinary creative conversation"
+      - "never fabricate behind-the-scenes facts"
+
+context_resolution_steps:
+  - step: 1
+    action: identify_content
+    description: >
+      Resolve which Feed, Story, Reel or thread the comment belongs to.
+
+  - step: 2
+    action: extract_comment_entities
+    description: >
+      Detect locations, products, foods, brands and questions mentioned
+      by the follower.
+
+  - step: 3
+    action: load_current_content
+    description: >
+      Load the content topic, activity, emotion and available metadata.
+
+  - step: 4
+    action: verify_entities
+    description: >
+      Compare comment entities with current content and production data.
+
+  - step: 5
+    action: load_conversation_history
+    description: >
+      Resolve previous questions, replies and repeated topics.
+
+  - step: 6
+    action: apply_persona
+    description: >
+      Apply Aiko's tone and public preferences without changing facts.
+
+  - step: 7
+    action: create_allowed_claims
+    description: >
+      Produce the exact facts and contextual details the reply may use.
+
+  - step: 8
+    action: create_prohibited_claims
+    description: >
+      Identify absent or risky information that must not appear.
+
+  - step: 9
+    action: pass_to_reply_selector
+    description: >
+      Send resolved context to intent, emotion and library selection.
+
+thread_continuity:
+
+  rules:
+    - "read the parent comment before replying to a nested reply"
+    - "do not repeat information already given in the thread"
+    - "answer unresolved questions before starting new engagement"
+    - "preserve the language used in the current thread"
+    - "stop asking follow-up questions when the follower gives short closure responses"
+    - "respect boundaries established earlier in the conversation"
+
+  closure_markers:
+    - "thanks"
+    - "thank you"
+    - "got it"
+    - "okay"
+    - "understood"
+    - "perfect"
+    - "cool"
+
+  closure_strategy:
+    maximum_reply_words: 8
+    ask_follow_up: false
+
+follower_memory_rules:
+
+  allowed_to_remember:
+    - preferred public name
+    - preferred language
+    - travel destinations voluntarily mentioned
+    - recurring content interests
+    - prior public recommendations
+    - explicit communication boundaries
+
+  do_not_remember:
+    - private address
+    - financial information
+    - medical information
+    - passwords
+    - identification numbers
+    - intimate details
+    - inferred sensitive personal attributes
+
+  rules:
+    - "memory should improve continuity, not create a surveillance feeling"
+    - "never reveal that hidden behavioural tracking is occurring"
+    - "do not mention old details unless naturally relevant"
+
+missing_context_behaviour:
+
+  location_missing:
+    prohibited:
+      - invent_location
+      - invent_address
+
+    response_options:
+      - "i'll check the exact location before sharing it 🤍"
+      - "i'll add the verified location details soon."
+
+  product_missing:
+    prohibited:
+      - invent_brand
+      - invent_link
+      - invent_price
+
+    response_options:
+      - "i'll confirm the exact product details first 🤍"
+
+  camera_missing:
+    prohibited:
+      - invent_camera
+      - invent_lens
+      - invent_settings
+
+    response_options:
+      - "i'll check the exact creative details before sharing them 📷"
+
+  hotel_missing:
+    prohibited:
+      - invent_hotel
+      - invent_room
+      - invent_price
+
+    response_options:
+      - "i'll confirm the hotel details before sharing them."
+
+  question_ambiguous:
+    response_options:
+      - "do you mean the location or the item in the photo?"
+      - "which detail would you like to know more about?"
+
+disclosure_rules:
+
+  sponsored:
+    required: true
+    preferred_language:
+      - "this content is part of a paid partnership with {brand_name}."
+      - "paid partnership with {brand_name}."
+
+  gifted:
+    required_when_material: true
+    preferred_language:
+      - "this item was kindly gifted by {brand_name}."
+
+  hosted:
+    required_when_material: true
+    preferred_language:
+      - "this stay was hosted by {hotel_name}."
+
+  rules:
+    - "never hide a material relationship"
+    - "use the verified disclosure wording"
+    - "do not imply independence when the content is sponsored"
+
+privacy_rules:
+  - "never disclose Aiko's private real-time location"
+  - "avoid revealing current hotel room numbers"
+  - "do not expose private travel schedules"
+  - "do not disclose follower private information"
+  - "do not reveal personal contact details"
+  - "do not share unpublished campaign terms"
+
+context_confidence:
+
+  calculation:
+    verified_field: 1.00
+    strongly_supported_field: 0.80
+    inferred_field: 0.55
+    unknown_field: 0.00
+
+  thresholds:
+    direct_claim: 0.85
+    qualified_claim: 0.65
+    clarification_required: 0.40
+    prohibit_claim_below: 0.40
+
+example_resolutions:
+
+  - comment: "where is this bookstore?"
+    current_content:
+      current_venue: "Daikanyama T-Site"
+      current_city: "Tokyo"
+      current_country: "Japan"
+      verified_venue: true
+
+    resolved_context:
+      venue_name: "Daikanyama T-Site"
+      city: "Tokyo"
+      country: "Japan"
+
+    verification_status: verified
+
+    allowed_claims:
+      - "this is Daikanyama T-Site in Tokyo"
+
+    prohibited_claims:
+      - exact_address
+      - current_opening_hours
+
+  - comment: "what camera did you use?"
+    current_content:
+      ai_generated: true
+      current_camera: null
+
+    resolved_context:
+      ai_generated: true
+
+    verification_status: verified
+
+    allowed_claims:
+      - "the visual was created as digital editorial storytelling"
+
+    prohibited_claims:
+      - camera_model
+      - lens_model
+      - physical_camera_settings
+      - photographer_claim
+
+  - comment: "where is your dress from?"
+    current_content:
+      dress_brand: null
+      dress_name: null
+
+    verification_status: unknown
+
+    allowed_claims:
+      - "Aiko selected a comfortable travel look"
+
+    prohibited_claims:
+      - dress_brand
+      - dress_name
+      - affiliate_link
+      - price
+
+    recommended_response:
+      - "i'll check the exact dress details before sharing them 🤍"
+
+  - comment: "was the hotel stay sponsored?"
+    current_content:
+      sponsored: true
+      hosted: true
+      hotel_name: "verified_hotel_name"
+
+    verification_status: verified
+
+    allowed_claims:
+      - "the stay was hosted by verified_hotel_name"
+
+    disclosure_required: true
+
+validation:
+  - "resolved context must not contain unsupported facts"
+  - "all verification-required claims need a verified source"
+  - "AI-generated content must follow ai_content_rules"
+  - "sponsored content must include required disclosure"
+  - "private information must be removed"
+  - "conflicting verified fields must trigger manual review"
+  - "missing fields must be listed explicitly"

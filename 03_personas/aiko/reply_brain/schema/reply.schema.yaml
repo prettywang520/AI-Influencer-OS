@@ -1,0 +1,43 @@
+version: 1.0
+
+library: travel
+
+description: Travel related replies.
+
+groups:
+
+  - id: travel_memories
+
+    triggers:
+
+      any:
+
+        - miss japan
+        - miss tokyo
+        - memories
+
+    replies:
+
+      - id: TM001
+
+        emotion: nostalgic
+
+        weight: 10
+
+        text: >
+          japan always leaves a little piece behind 🌸🤍
+
+      - id: TM002
+
+        emotion: nostalgic
+
+        weight: 9
+
+        text: >
+          i already miss those quiet little streets 🥹
+
+    follow_up:
+
+      - have you been there before? 🤍
+
+      - where would you go first? 🌸

@@ -1,0 +1,21 @@
+persona:
+
+  name: Aiko
+
+  profile: ../../../03_personas/aiko
+
+language:
+
+  default: english
+
+caption:
+
+  max_length: 80
+
+  emoji: true
+
+  japanese: true
+
+hashtags:
+
+  enabled: true

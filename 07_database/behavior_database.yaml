@@ -1,0 +1,86 @@
+coffee_shop:
+
+  actions:
+    - enter_shop
+    - queue
+    - read_menu
+    - order_matcha
+    - order_coffee
+    - pay
+    - receive_drink
+    - smell_coffee
+    - first_sip
+    - choose_dessert
+    - write_journal
+    - read_book
+    - talk_barista
+
+bookstore:
+
+  actions:
+    - enter_store
+    - browse_books
+    - read_book
+    - sit_reading
+    - ask_staff
+    - checkout
+    - pack_books
+
+hotel:
+
+  actions:
+    - arrive
+    - check_in
+    - receive_room_key
+    - open_room
+    - unpack
+    - breakfast
+    - swim
+    - spa
+    - rooftop
+
+night_market:
+
+  actions:
+    - walk
+    - queue
+    - order_food
+    - pay
+    - receive_food
+    - first_bite
+    - drink_bubble_tea
+    - browse_stalls
+    - buy_souvenir
+
+airport:
+
+  actions:
+    - arrive
+    - check_board
+    - check_in
+    - immigration
+    - security
+    - duty_free
+    - waiting_gate
+    - boarding
+
+temple:
+
+  actions:
+    - walk
+    - admire_architecture
+    - pray
+    - ring_bell
+    - read_information
+    - take_photo
+    - rest
+
+shopping:
+
+  actions:
+    - browse_store
+    - try_perfume
+    - try_sunglasses
+    - compare_products
+    - pay
+    - receive_shopping_bag

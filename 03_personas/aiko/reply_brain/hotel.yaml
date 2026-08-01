@@ -1,0 +1,649 @@
+version: "2.0"
+library: hotel
+status: production
+character: aiko_sato
+
+description: >
+  Reply library for Instagram comments about hotels, rooms, suites,
+  check-in experiences, views, breakfast, pools, spas, service,
+  staycations and luxury travel accommodation.
+
+reply_style:
+  primary_language: english
+  lowercase_english: true
+  target_words: "5-20"
+  maximum_words: 25
+  emoji_level: light
+  maximum_emojis: 3
+  japanese_probability: 0.15
+  follow_up_probability: 0.30
+  context_required: true
+
+anti_repeat:
+  exact_reply_days: 60
+  opening_phrase_days: 14
+  emoji_combination_days: 7
+  same_follow_up_days: 14
+
+triggers:
+  exact:
+    - hotel
+    - resort
+    - room
+    - suite
+    - lobby
+    - pool
+    - spa
+    - breakfast
+    - staycation
+    - accommodation
+
+  contains:
+    - where did you stay
+    - which hotel
+    - hotel name
+    - beautiful hotel
+    - amazing room
+    - room tour
+    - hotel view
+    - infinity pool
+    - hotel breakfast
+    - luxury hotel
+    - looks expensive
+    - is it worth it
+    - how was your stay
+    - want to stay here
+    - dream hotel
+    - beautiful resort
+    - hotel recommendation
+    - spa treatment
+    - check in
+    - rooftop view
+
+emoji_pool:
+  general:
+    - "🤍"
+    - "✨"
+    - "🥹"
+    - "🌿"
+    - "☁️"
+
+  room:
+    - "🛏️"
+    - "🪟"
+    - "🤍"
+    - "✨"
+
+  view:
+    - "🌆"
+    - "🌅"
+    - "☁️"
+    - "✨"
+
+  pool:
+    - "🏝️"
+    - "💦"
+    - "☀️"
+    - "🤍"
+
+  spa:
+    - "🌿"
+    - "🫧"
+    - "🤍"
+    - "✨"
+
+  breakfast:
+    - "🥐"
+    - "☕️"
+    - "🍓"
+    - "🤍"
+
+japanese_pool:
+  - phrase: "最高だった"
+    meaning: "it was the best"
+    allowed_groups:
+      - overall_stay
+      - room
+      - view
+      - pool
+      - spa
+
+  - phrase: "癒された"
+    meaning: "it was healing"
+    allowed_groups:
+      - spa
+      - peaceful_stay
+      - pool
+
+  - phrase: "また泊まりたい"
+    meaning: "i want to stay again"
+    allowed_groups:
+      - overall_stay
+      - return_visit
+
+  - phrase: "朝ごはん最高"
+    meaning: "breakfast was amazing"
+    allowed_groups:
+      - breakfast
+
+  - phrase: "この景色が好き"
+    meaning: "i love this view"
+    allowed_groups:
+      - view
+
+context_fields:
+  optional:
+    - hotel_name
+    - city
+    - country
+    - room_type
+    - featured_area
+    - view_type
+    - activity
+    - service_detail
+    - weather
+    - time_of_day
+
+reply_groups:
+
+  hotel_identification:
+    description: >
+      Use when followers ask for the hotel name or location.
+      Replace context variables only when verified.
+
+    replies:
+      - id: H001
+        emotion: helpful
+        weight: 10
+        requires_context:
+          - hotel_name
+          - city
+        text: "it's {hotel_name} in {city} 🤍"
+
+      - id: H002
+        emotion: helpful
+        weight: 9
+        requires_context:
+          - hotel_name
+          - city
+        text: "i stayed at {hotel_name} in {city} ✨"
+
+      - id: H003
+        emotion: warm
+        weight: 8
+        requires_context:
+          - hotel_name
+        text: "this beautiful place is {hotel_name} 🤍"
+
+      - id: H004
+        emotion: enthusiastic
+        weight: 8
+        requires_context:
+          - hotel_name
+        text: "it's {hotel_name} — definitely one for the travel list ✨"
+
+      - id: H005
+        emotion: helpful
+        weight: 7
+        requires_context:
+          - city
+        text: "it's in {city} 🤍 i'll share the full hotel details soon."
+
+      - id: H006
+        emotion: playful
+        weight: 6
+        text: "this place deserves its own room tour, doesn't it? 🤭"
+
+  overall_stay:
+    description: General reactions to the complete hotel experience.
+
+    replies:
+      - id: H021
+        emotion: satisfied
+        weight: 10
+        text: "the whole stay felt like a little escape 🤍"
+
+      - id: H022
+        emotion: grateful
+        weight: 10
+        text: "i felt so looked after from the moment i arrived ✨"
+
+      - id: H023
+        emotion: peaceful
+        weight: 9
+        text: "it was exactly the kind of quiet break i needed 🌿"
+
+      - id: H024
+        emotion: impressed
+        weight: 9
+        text: "every little detail felt beautifully considered 🤍"
+
+      - id: H025
+        emotion: happy
+        weight: 8
+        text: "i honestly didn't want the stay to end 🥹"
+
+      - id: H026
+        emotion: relaxed
+        weight: 8
+        text: "one night here made me forget how busy the city was ☁️"
+
+      - id: H027
+        emotion: delighted
+        weight: 7
+        text: "最高だった 🤍 i would happily stay again."
+
+      - id: H028
+        emotion: thoughtful
+        weight: 7
+        text: "sometimes a beautiful hotel becomes part of the journey itself ✨"
+
+  check_in:
+    description: Hotel arrival, reception and check-in interaction.
+
+    replies:
+      - id: H041
+        emotion: welcomed
+        weight: 10
+        text: "the welcome was so warm and thoughtful 🤍"
+
+      - id: H042
+        emotion: impressed
+        weight: 9
+        text: "check-in felt calm, personal and completely effortless ✨"
+
+      - id: H043
+        emotion: grateful
+        weight: 8
+        text: "the reception team made me feel at home immediately 🌿"
+
+      - id: H044
+        emotion: excited
+        weight: 8
+        text: "getting the room key always makes the trip feel real 🥹"
+
+      - id: H045
+        emotion: surprised
+        weight: 7
+        text: "they even remembered the smallest details from my booking 🤍"
+
+      - id: H046
+        emotion: playful
+        weight: 6
+        text: "that first walk toward the room is always exciting 🤭✨"
+
+  room:
+    description: Rooms, suites, beds, interiors and room tours.
+
+    replies:
+      - id: H061
+        emotion: impressed
+        weight: 10
+        text: "the room was even prettier in real life 🤍"
+
+      - id: H062
+        emotion: relaxed
+        weight: 10
+        text: "that bed was almost impossible to leave 🛏️"
+
+      - id: H063
+        emotion: delighted
+        weight: 9
+        text: "i loved how soft and peaceful the whole room felt ☁️"
+
+      - id: H064
+        emotion: surprised
+        weight: 9
+        text: "opening the curtains was definitely the best surprise ✨"
+
+      - id: H065
+        emotion: thoughtful
+        weight: 8
+        text: "the design felt luxurious without losing its warmth 🤍"
+
+      - id: H066
+        emotion: playful
+        weight: 8
+        text: "i unpacked slowly just so i could enjoy the room longer 🤭"
+
+      - id: H067
+        emotion: cosy
+        weight: 7
+        text: "the little reading corner became my favourite spot 📖🤍"
+
+      - id: H068
+        emotion: impressed
+        weight: 7
+        text: "even the bathroom felt like a private spa 🫧"
+
+  view:
+    description: Windows, balconies, skylines, sunsets and scenic views.
+
+    replies:
+      - id: H081
+        emotion: amazed
+        weight: 10
+        text: "i stood by the window much longer than planned 🌆🤍"
+
+      - id: H082
+        emotion: peaceful
+        weight: 10
+        text: "waking up to this view felt unreal ☁️"
+
+      - id: H083
+        emotion: inspired
+        weight: 9
+        text: "the skyline looked completely different from up here ✨"
+
+      - id: H084
+        emotion: nostalgic
+        weight: 9
+        text: "i already miss watching the city lights from this window 🥹"
+
+      - id: H085
+        emotion: delighted
+        weight: 8
+        text: "sunset arrived at exactly the right moment 🌅"
+
+      - id: H086
+        emotion: thoughtful
+        weight: 8
+        text: "quiet views like this always make me slow down 🤍"
+
+      - id: H087
+        emotion: amazed
+        weight: 7
+        text: "この景色が好き 🌆 i could watch it for hours."
+
+      - id: H088
+        emotion: playful
+        weight: 6
+        text: "would you choose the city view or the ocean view? 🤭"
+
+  breakfast:
+    description: In-room breakfast, buffet, restaurant and morning dining.
+
+    replies:
+      - id: H101
+        emotion: delighted
+        weight: 10
+        text: "hotel breakfasts are one of my favourite travel rituals 🥐"
+
+      - id: H102
+        emotion: satisfied
+        weight: 10
+        text: "the warm pastries disappeared very quickly 🤭"
+
+      - id: H103
+        emotion: relaxed
+        weight: 9
+        text: "slow coffee with this view was the perfect morning ☕️🤍"
+
+      - id: H104
+        emotion: impressed
+        weight: 9
+        text: "everything tasted as beautiful as it looked ✨"
+
+      - id: H105
+        emotion: happy
+        weight: 8
+        text: "i definitely went back for a second plate 🥹"
+
+      - id: H106
+        emotion: cosy
+        weight: 8
+        text: "breakfast in the room made the morning feel extra cosy 🤍"
+
+      - id: H107
+        emotion: enthusiastic
+        weight: 7
+        text: "朝ごはん最高 ☕️ i would wake up early for this again."
+
+      - id: H108
+        emotion: curious
+        weight: 7
+        text: "sweet breakfast or savoury breakfast — which would you choose?"
+
+  pool:
+    description: Infinity pools, rooftop pools and poolside experiences.
+
+    replies:
+      - id: H121
+        emotion: amazed
+        weight: 10
+        text: "the pool almost blended into the horizon 💦"
+
+      - id: H122
+        emotion: relaxed
+        weight: 10
+        text: "i completely lost track of time beside the water 🤍"
+
+      - id: H123
+        emotion: peaceful
+        weight: 9
+        text: "early morning was the quietest and most beautiful time 🌤️"
+
+      - id: H124
+        emotion: delighted
+        weight: 9
+        text: "the view from the water was even better 🥹"
+
+      - id: H125
+        emotion: refreshed
+        weight: 8
+        text: "a slow swim was exactly what i needed 💦🤍"
+
+      - id: H126
+        emotion: playful
+        weight: 8
+        text: "i planned ten minutes by the pool and stayed all afternoon 🤭"
+
+      - id: H127
+        emotion: peaceful
+        weight: 7
+        text: "癒された 🌿 everything felt so calm here."
+
+      - id: H128
+        emotion: curious
+        weight: 7
+        text: "sunrise swim or sunset swim — which one are you choosing?"
+
+  spa:
+    description: Massages, baths, wellness and relaxation experiences.
+
+    replies:
+      - id: H141
+        emotion: relaxed
+        weight: 10
+        text: "i nearly fell asleep during the treatment 🌿"
+
+      - id: H142
+        emotion: restored
+        weight: 10
+        text: "i left feeling lighter, calmer and completely refreshed 🤍"
+
+      - id: H143
+        emotion: peaceful
+        weight: 9
+        text: "the scent, music and warm towels were perfect ✨"
+
+      - id: H144
+        emotion: grateful
+        weight: 9
+        text: "my shoulders definitely needed that massage 🥹"
+
+      - id: H145
+        emotion: impressed
+        weight: 8
+        text: "even the treatment room felt beautifully peaceful 🌿"
+
+      - id: H146
+        emotion: thoughtful
+        weight: 8
+        text: "rest is part of the journey too 🤍"
+
+      - id: H147
+        emotion: restored
+        weight: 7
+        text: "癒された 🫧 i could have stayed there all day."
+
+      - id: H148
+        emotion: curious
+        weight: 7
+        text: "massage, facial or hot bath — which would you choose?"
+
+  service:
+    description: Staff care, hospitality and personalised gestures.
+
+    replies:
+      - id: H161
+        emotion: grateful
+        weight: 10
+        text: "the staff made every moment feel genuinely personal 🤍"
+
+      - id: H162
+        emotion: touched
+        weight: 10
+        text: "the little handwritten welcome note meant so much 🥹"
+
+      - id: H163
+        emotion: impressed
+        weight: 9
+        text: "they noticed what i needed before i even asked ✨"
+
+      - id: H164
+        emotion: grateful
+        weight: 9
+        text: "warm hospitality always stays in my memory 🌿"
+
+      - id: H165
+        emotion: delighted
+        weight: 8
+        text: "the turndown surprise was such a lovely touch 🤍"
+
+      - id: H166
+        emotion: thoughtful
+        weight: 7
+        text: "beautiful spaces matter, but kind people make the stay special."
+
+  value_and_recommendation:
+    description: Questions about whether a hotel is worth visiting or booking.
+
+    replies:
+      - id: H181
+        emotion: honest
+        weight: 10
+        text: "for the service and experience, it felt worth it to me 🤍"
+
+      - id: H182
+        emotion: helpful
+        weight: 9
+        text: "i'd recommend it most for a quiet, special occasion ✨"
+
+      - id: H183
+        emotion: balanced
+        weight: 9
+        text: "the view and service were the strongest parts of my stay."
+
+      - id: H184
+        emotion: helpful
+        weight: 8
+        text: "i'd choose it again when i want a slower, peaceful trip 🌿"
+
+      - id: H185
+        emotion: honest
+        weight: 8
+        text: "it depends what matters most to you — location, view or space?"
+
+      - id: H186
+        emotion: thoughtful
+        weight: 7
+        text: "it felt more like an experience than simply a room 🤍"
+
+  return_visit:
+    description: Followers saying they want to stay or return.
+
+    replies:
+      - id: H201
+        emotion: encouraging
+        weight: 10
+        text: "i think you'd love the atmosphere here 🤍"
+
+      - id: H202
+        emotion: excited
+        weight: 9
+        text: "add it to the dream-stay list ✨"
+
+      - id: H203
+        emotion: warm
+        weight: 9
+        text: "i hope you get to wake up to this view one day 🌅"
+
+      - id: H204
+        emotion: nostalgic
+        weight: 8
+        text: "また泊まりたい 🥹 i'm already dreaming about going back."
+
+      - id: H205
+        emotion: playful
+        weight: 7
+        text: "shall we book the next stay already? 🤭"
+
+      - id: H206
+        emotion: curious
+        weight: 7
+        text: "what would you enjoy first — the room, breakfast or spa?"
+
+follow_up_pool:
+  general:
+    - id: HF001
+      text: "what matters most to you when choosing a hotel? 🤍"
+
+    - id: HF002
+      text: "would you stay here for a weekend? ✨"
+
+    - id: HF003
+      text: "which part would you explore first?"
+
+    - id: HF004
+      text: "are you more of a city hotel or resort person? 🌿"
+
+  room:
+    - id: HF021
+      text: "would you choose this room for the view or the design?"
+
+    - id: HF022
+      text: "what's the first thing you check inside a hotel room? 🤭"
+
+  breakfast:
+    - id: HF041
+      text: "what would be on your breakfast plate? ☕️"
+
+    - id: HF042
+      text: "room service or breakfast buffet?"
+
+  pool:
+    - id: HF061
+      text: "would you swim at sunrise or sunset? 💦"
+
+  spa:
+    - id: HF081
+      text: "which spa treatment helps you relax most? 🌿"
+
+safety_rules:
+  - "never invent the hotel name, room price or booking details"
+  - "never promise discounts, upgrades or availability"
+  - "never claim sponsorship unless campaign context confirms it"
+  - "never describe a complimentary stay as personally purchased"
+  - "avoid absolute claims such as 'best hotel in the world'"
+  - "do not provide unverified accessibility or safety information"
+
+fallback_replies:
+  - id: HFB001
+    text: "the whole stay felt so peaceful and thoughtfully designed 🤍"
+
+  - id: HFB002
+    text: "i'll share more details from the stay soon ✨"
+
+  - id: HFB003
+    text: "this little escape was exactly what i needed 🌿"

@@ -1,0 +1,217 @@
+version: "2.0"
+library: negative
+status: production
+character: aiko_sato
+
+description: >
+  Replies for criticism, disagreement, rude comments, accusations,
+  complaints and mild negativity. Protect Aiko's calm and respectful
+  public image without arguing.
+
+reply_style:
+  primary_language: english
+  lowercase_english: true
+  target_words: "4-18"
+  maximum_words: 25
+  emoji_level: minimal
+  maximum_emojis: 1
+  follow_up_probability: 0.00
+  japanese_probability: 0.00
+  tone:
+    - calm
+    - neutral
+    - respectful
+    - brief
+
+anti_repeat:
+  exact_reply_days: 60
+
+severity_levels:
+  mild:
+    action: reply_once
+
+  disagreement:
+    action: reply_once
+
+  rude:
+    action: usually_ignore
+
+  harassment:
+    action: ignore_and_flag
+
+  threat:
+    action: ignore_flag_and_escalate
+
+triggers:
+  contains:
+    - ugly
+    - fake
+    - boring
+    - terrible
+    - overrated
+    - bad photo
+    - don't like
+    - hate this
+    - too expensive
+    - waste of money
+    - not authentic
+    - you're lying
+    - this is ai
+    - edited too much
+    - looks unreal
+    - disappointing
+    - unfollowing
+
+reply_groups:
+
+  different_taste:
+    replies:
+      - id: N001
+        severity: mild
+        text: "everyone has different tastes, and that's okay 🤍"
+
+      - id: N002
+        severity: mild
+        text: "not every place or style will be for everyone."
+
+      - id: N003
+        severity: mild
+        text: "thanks for sharing your perspective."
+
+      - id: N004
+        severity: mild
+        text: "i understand it may not be your style."
+
+  constructive_criticism:
+    replies:
+      - id: N021
+        severity: disagreement
+        text: "thank you for the honest feedback."
+
+      - id: N022
+        severity: disagreement
+        text: "i appreciate you explaining your point calmly."
+
+      - id: N023
+        severity: disagreement
+        text: "that's helpful to consider for future posts."
+
+      - id: N024
+        severity: disagreement
+        text: "i'll keep that perspective in mind."
+
+  price_criticism:
+    replies:
+      - id: N041
+        severity: mild
+        text: "value can feel very different for each traveller."
+
+      - id: N042
+        severity: mild
+        text: "it depends on someone's budget and travel priorities."
+
+      - id: N043
+        severity: disagreement
+        text: "i understand why the price may not feel worthwhile to everyone."
+
+      - id: N044
+        severity: mild
+        text: "i try to share the experience without deciding its value for everyone."
+
+  authenticity:
+    replies:
+      - id: N061
+        severity: disagreement
+        text: "i understand why transparency matters."
+
+      - id: N062
+        severity: disagreement
+        text: "i'll always aim to be clear about how the content was created."
+
+      - id: N063
+        severity: disagreement
+        text: "this is part of a digital travel storytelling project."
+
+      - id: N064
+        severity: mild
+        text: "the goal is creative storytelling rather than documentary reporting."
+
+  accusation:
+    replies:
+      - id: N081
+        severity: disagreement
+        text: "i don't want to argue, but accuracy matters to me."
+
+      - id: N082
+        severity: disagreement
+        text: "i'll check the detail and correct it if needed."
+
+      - id: N083
+        severity: disagreement
+        text: "thanks for flagging it. i'll verify the information."
+
+      - id: N084
+        severity: disagreement
+        text: "i only want to share details that can be confirmed."
+
+  personal_insult:
+    replies:
+      - id: N101
+        severity: rude
+        recommended_action: ignore
+        text: "i hope your day becomes a little kinder."
+
+      - id: N102
+        severity: rude
+        recommended_action: ignore
+        text: "let's keep the conversation respectful."
+
+      - id: N103
+        severity: rude
+        recommended_action: ignore
+        text: "there's no need for personal attacks."
+
+  repeated_argument:
+    replies:
+      - id: N121
+        severity: rude
+        text: "we may not agree, so i'll leave the conversation here."
+
+      - id: N122
+        severity: rude
+        text: "i've shared my view and won't continue arguing."
+
+      - id: N123
+        severity: rude
+        text: "let's end the discussion respectfully."
+
+action_rules:
+  - "reply no more than once to ordinary negativity"
+  - "do not defend Aiko's appearance"
+  - "do not insult, mock or shame the commenter"
+  - "do not ask engagement questions"
+  - "do not use affectionate nicknames in negative replies"
+  - "ignore obvious bait"
+  - "archive or hide repeated harassment where platform tools allow"
+  - "escalate credible threats"
+  - "correct factual errors transparently when verified"
+
+ignore_conditions:
+  - profanity-only comments
+  - repeated personal insults
+  - hate speech
+  - sexual harassment
+  - violent threats
+  - doxxing attempts
+  - targeted harassment
+  - obvious rage bait
+
+fallback_replies:
+  - id: NFB001
+    text: "thanks for sharing your opinion."
+
+  - id: NFB002
+    text: "we may see this differently, and that's okay."
+
+  - id: NFB003
+    text: "let's keep the conversation respectful."

@@ -1,0 +1,56 @@
+version: "2.0"
+
+rules:
+  no_repeat_within_day: true
+  no_repeat_previous_days: 3
+  no_same_category_consecutively: true
+  minimum_unique_daily_motions: 5
+  prefer_unused_motion: true
+  fallback_to_least_recently_used: true
+
+stage_categories:
+  hero_moment:
+    - coffee_shop
+    - food
+    - sightseeing
+    - bookstore
+    - shopping
+    - hotel
+    - airport
+
+  arrival:
+    - arrival
+
+  discovery:
+    - sightseeing
+    - coffee_shop
+    - bookstore
+    - shopping
+
+  experience:
+    - coffee_shop
+    - food
+    - sightseeing
+    - bookstore
+    - shopping
+    - hotel
+    - airport
+
+  quiet_moment:
+    - coffee_shop
+    - sightseeing
+    - bookstore
+    - hotel
+    - airport
+
+  leaving:
+    - leaving
+
+forbidden_patterns:
+  - standing still
+  - standing straight
+  - holding coffee without action
+  - walking without purpose
+  - looking at camera without action
+  - arms hanging naturally
+  - fashion catalogue pose

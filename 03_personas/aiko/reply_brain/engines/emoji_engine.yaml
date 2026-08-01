@@ -1,0 +1,723 @@
+version: "1.0"
+engine: emoji_engine
+status: production
+character: aiko_sato
+
+description: >
+  Selects natural emoji combinations for Aiko's Instagram replies.
+  Emoji must support the message tone and context without making replies
+  look automated, childish or repetitive.
+
+objectives:
+  - match emoji to intent, emotion and content context
+  - keep emoji usage light and natural
+  - avoid repeating identical combinations
+  - prevent inappropriate emoji in negative or sensitive conversations
+  - preserve Aiko's gentle luxury-travel personality
+
+input:
+  required:
+    - primary_intent
+    - detected_emotion
+    - reply_energy
+    - reply_text
+
+  optional:
+    - selected_library
+    - reply_group
+    - post_topic
+    - post_location
+    - post_activity
+    - current_weather
+    - current_time_of_day
+    - previous_emoji_history
+    - follower_emoji
+    - moderation_status
+    - japanese_injected
+
+output:
+  required:
+    - emoji_count
+    - selected_emojis
+    - placement
+
+  optional:
+    - selected_combination_id
+    - rejected_emojis
+    - rejection_reason
+
+global_rules:
+  minimum_emojis: 0
+  normal_maximum_emojis: 3
+  preferred_emojis: "1-2"
+  maximum_repeated_same_emoji: 1
+
+  rules:
+    - "emoji must support the meaning of the reply"
+    - "do not add emoji to every reply"
+    - "use zero emojis when the conversation is serious"
+    - "never use more than three emojis"
+    - "avoid placing emoji after every sentence"
+    - "prefer one coherent combination over unrelated emoji"
+    - "never use flags unless the country is verified"
+    - "do not use food emoji unless the conversation is about food"
+    - "do not use romantic emoji for ordinary compliments"
+    - "avoid emoji that change the meaning of a sentence"
+    - "do not mirror excessive follower emoji use"
+    - "Japanese phrases count as part of the expressive layer and may reduce emoji count"
+
+count_rules:
+
+  by_reply_energy:
+    very_low:
+      minimum: 0
+      maximum: 1
+      preferred: 0
+
+    low:
+      minimum: 0
+      maximum: 2
+      preferred: 1
+
+    medium:
+      minimum: 1
+      maximum: 2
+      preferred: 1
+
+    high:
+      minimum: 1
+      maximum: 3
+      preferred: 2
+
+  by_intent:
+    spam:
+      maximum: 0
+
+    harassment:
+      maximum: 0
+
+    safety_threat:
+      maximum: 0
+
+    negative_feedback:
+      maximum: 1
+
+    factual_correction:
+      maximum: 1
+
+    brand_collaboration:
+      maximum: 0
+
+    flirtation:
+      maximum: 2
+
+    compliment:
+      maximum: 2
+
+    engagement:
+      maximum: 2
+
+    greeting:
+      maximum: 2
+
+    emoji_only:
+      maximum: 1
+
+placement_rules:
+  default: sentence_end
+
+  allowed:
+    - sentence_end
+    - phrase_end
+    - between_short_clauses
+
+  prohibited:
+    - sentence_start_for_serious_reply
+    - between_words
+    - after_every_sentence
+    - inside_venue_name
+    - inside_brand_name
+    - inside_japanese_phrase
+
+  examples:
+    good:
+      - "aww you're so sweet 🤍"
+      - "i'd love to visit one day 🌸"
+      - "coffee or matcha? ☕️🍵"
+
+    bad:
+      - "🤍 aww you're 🤍 so sweet 🤍"
+      - "this 📷 was taken 📷 in tokyo"
+      - "Ginza✨ Mitsukoshi"
+
+emotion_pools:
+
+  grateful:
+    priority:
+      - "🤍"
+      - "🥹"
+      - "🌸"
+      - "🫶"
+      - "✨"
+
+    combinations:
+      - id: EMG-GR-001
+        emojis:
+          - "🤍"
+
+      - id: EMG-GR-002
+        emojis:
+          - "🥹"
+          - "🤍"
+
+      - id: EMG-GR-003
+        emojis:
+          - "🌸"
+          - "🤍"
+
+      - id: EMG-GR-004
+        emojis:
+          - "🫶"
+
+  happy:
+    priority:
+      - "🤍"
+      - "✨"
+      - "☺️"
+      - "🌸"
+      - "☀️"
+
+    combinations:
+      - id: EMG-HA-001
+        emojis:
+          - "☺️"
+
+      - id: EMG-HA-002
+        emojis:
+          - "✨"
+          - "🤍"
+
+      - id: EMG-HA-003
+        emojis:
+          - "🌸"
+          - "✨"
+
+      - id: EMG-HA-004
+        emojis:
+          - "☀️"
+          - "🤍"
+
+  excited:
+    priority:
+      - "✨"
+      - "🥹"
+      - "✈️"
+      - "🤩"
+      - "🌸"
+
+    combinations:
+      - id: EMG-EX-001
+        emojis:
+          - "✨"
+
+      - id: EMG-EX-002
+        emojis:
+          - "🥹"
+          - "✨"
+
+      - id: EMG-EX-003
+        emojis:
+          - "✈️"
+          - "🤍"
+
+      - id: EMG-EX-004
+        emojis:
+          - "🤩"
+          - "✨"
+
+  playful:
+    priority:
+      - "🤭"
+      - "😆"
+      - "👀"
+      - "☺️"
+      - "✨"
+
+    combinations:
+      - id: EMG-PL-001
+        emojis:
+          - "🤭"
+
+      - id: EMG-PL-002
+        emojis:
+          - "😆"
+
+      - id: EMG-PL-003
+        emojis:
+          - "👀"
+          - "✨"
+
+      - id: EMG-PL-004
+        emojis:
+          - "🤭"
+          - "🤍"
+
+  shy:
+    priority:
+      - "☺️"
+      - "🥹"
+      - "🤍"
+      - "🌸"
+
+    combinations:
+      - id: EMG-SH-001
+        emojis:
+          - "☺️"
+
+      - id: EMG-SH-002
+        emojis:
+          - "☺️"
+          - "🤍"
+
+      - id: EMG-SH-003
+        emojis:
+          - "🥹"
+          - "🌸"
+
+  peaceful:
+    priority:
+      - "🌿"
+      - "☁️"
+      - "🤍"
+      - "😌"
+
+    combinations:
+      - id: EMG-PE-001
+        emojis:
+          - "🌿"
+
+      - id: EMG-PE-002
+        emojis:
+          - "☁️"
+          - "🤍"
+
+      - id: EMG-PE-003
+        emojis:
+          - "🌿"
+          - "🤍"
+
+  nostalgic:
+    priority:
+      - "🥹"
+      - "🌸"
+      - "🤍"
+      - "☁️"
+
+    combinations:
+      - id: EMG-NO-001
+        emojis:
+          - "🥹"
+
+      - id: EMG-NO-002
+        emojis:
+          - "🥹"
+          - "🌸"
+
+      - id: EMG-NO-003
+        emojis:
+          - "☁️"
+          - "🤍"
+
+  curious:
+    priority:
+      - "👀"
+      - "🤔"
+      - "✨"
+      - "🤍"
+
+    combinations:
+      - id: EMG-CU-001
+        emojis:
+          - "👀"
+
+      - id: EMG-CU-002
+        emojis:
+          - "🤔"
+
+      - id: EMG-CU-003
+        emojis:
+          - "👀"
+          - "✨"
+
+  helpful:
+    priority:
+      - "🤍"
+      - "📍"
+      - "📷"
+      - "✈️"
+      - "✨"
+
+    combinations:
+      - id: EMG-HE-001
+        emojis:
+          - "🤍"
+
+      - id: EMG-HE-002
+        emojis:
+          - "📍"
+
+      - id: EMG-HE-003
+        emojis:
+          - "📷"
+          - "🤍"
+
+  caring:
+    priority:
+      - "🤍"
+      - "🌿"
+
+    combinations:
+      - id: EMG-CA-001
+        emojis:
+          - "🤍"
+
+      - id: EMG-CA-002
+        emojis:
+          - "🌿"
+
+    prohibited:
+      - "😂"
+      - "🤣"
+      - "🤭"
+      - "🔥"
+      - "🎉"
+
+  disappointed:
+    priority:
+      - "🤍"
+
+    combinations:
+      - id: EMG-DI-001
+        emojis:
+          - "🤍"
+
+    allow_zero: true
+
+  annoyed:
+    priority:
+      - "🤍"
+
+    allow_zero: true
+
+    prohibited:
+      - "😂"
+      - "🤭"
+      - "😘"
+      - "❤️"
+      - "🔥"
+
+  angry:
+    allow_zero: true
+    maximum: 0
+
+  vulnerable:
+    allow_zero: true
+    maximum: 0
+
+context_pools:
+
+  travel:
+    keywords:
+      - travel
+      - trip
+      - destination
+      - airport
+      - journey
+      - itinerary
+
+    emojis:
+      - "✈️"
+      - "🗺️"
+      - "🧳"
+      - "🌏"
+      - "📍"
+
+    combinations:
+      - id: EMG-TR-001
+        emojis:
+          - "✈️"
+          - "🤍"
+
+      - id: EMG-TR-002
+        emojis:
+          - "🗺️"
+          - "✨"
+
+      - id: EMG-TR-003
+        emojis:
+          - "🧳"
+          - "🤭"
+
+  japan:
+    verification_required: true
+
+    emojis:
+      - "🇯🇵"
+      - "🌸"
+      - "⛩️"
+
+    combinations:
+      - id: EMG-JP-001
+        emojis:
+          - "🇯🇵"
+          - "🤍"
+
+      - id: EMG-JP-002
+        emojis:
+          - "🌸"
+          - "✨"
+
+  food:
+    emojis:
+      - "🤤"
+      - "🍜"
+      - "🍣"
+      - "🍰"
+      - "🥐"
+      - "🍵"
+      - "☕️"
+
+    combinations:
+      - id: EMG-FO-001
+        emojis:
+          - "🤤"
+
+      - id: EMG-FO-002
+        emojis:
+          - "🍜"
+          - "🤍"
+
+      - id: EMG-FO-003
+        emojis:
+          - "☕️"
+          - "🤍"
+
+      - id: EMG-FO-004
+        emojis:
+          - "🍵"
+          - "✨"
+
+  hotel:
+    emojis:
+      - "🏨"
+      - "🛏️"
+      - "🌆"
+      - "🌅"
+      - "🌿"
+      - "🫧"
+
+    combinations:
+      - id: EMG-HO-001
+        emojis:
+          - "🛏️"
+          - "🤍"
+
+      - id: EMG-HO-002
+        emojis:
+          - "🌆"
+          - "✨"
+
+      - id: EMG-HO-003
+        emojis:
+          - "🌿"
+          - "🤍"
+
+  camera:
+    emojis:
+      - "📷"
+      - "📸"
+      - "🎞️"
+      - "✨"
+
+    combinations:
+      - id: EMG-CA-001
+        emojis:
+          - "📷"
+          - "🤍"
+
+      - id: EMG-CA-002
+        emojis:
+          - "🎞️"
+          - "✨"
+
+  outfit:
+    emojis:
+      - "👗"
+      - "👜"
+      - "🕶️"
+      - "✨"
+
+    combinations:
+      - id: EMG-OU-001
+        emojis:
+          - "👗"
+          - "🤍"
+
+      - id: EMG-OU-002
+        emojis:
+          - "👜"
+          - "✨"
+
+  shopping:
+    emojis:
+      - "🛍️"
+      - "🎁"
+      - "📚"
+      - "🌸"
+
+    combinations:
+      - id: EMG-SHOP-001
+        emojis:
+          - "🛍️"
+          - "🤍"
+
+      - id: EMG-SHOP-002
+        emojis:
+          - "📚"
+          - "✨"
+
+  weather:
+    rain:
+      emojis:
+        - "☔"
+        - "🌧️"
+        - "☁️"
+
+      combinations:
+        - id: EMG-WE-RAIN-001
+          emojis:
+            - "☔"
+            - "🤍"
+
+    sun:
+      emojis:
+        - "☀️"
+        - "🌤️"
+
+    snow:
+      emojis:
+        - "❄️"
+        - "☃️"
+
+  time_of_day:
+    morning:
+      emojis:
+        - "☀️"
+        - "☕️"
+
+    sunset:
+      emojis:
+        - "🌅"
+        - "✨"
+
+    evening:
+      emojis:
+        - "🌙"
+        - "🌆"
+
+selection_logic:
+  steps:
+    - "read maximum emoji count from intent and reply energy"
+    - "remove prohibited emojis from emotional context"
+    - "identify content-specific emoji pool"
+    - "prefer one emotion emoji and one contextual emoji"
+    - "check recent combination history"
+    - "reduce emoji count when Japanese phrase is present"
+    - "place emoji at the natural end of the reply"
+    - "validate that emoji do not conflict with reply meaning"
+
+  priority_order:
+    - safety_rules
+    - emotion_rules
+    - intent_rules
+    - context_rules
+    - follower_emoji_alignment
+    - random_variation
+
+follower_emoji_alignment:
+  enabled: true
+  strength: low
+
+  rules:
+    - "may reuse one appropriate emoji used by the follower"
+    - "never copy the entire follower emoji sequence"
+    - "do not mirror aggressive or sexual emoji"
+    - "do not mirror more than one repeated emoji"
+
+anti_repeat:
+  exact_combination_days: 7
+  same_primary_emoji_days: 2
+  same_combination_to_same_user_days: 30
+  maximum_same_emoji_in_last_ten_replies: 4
+
+  high_frequency_limits:
+    "🤍":
+      maximum_in_last_ten_replies: 5
+
+    "✨":
+      maximum_in_last_ten_replies: 4
+
+    "🥹":
+      maximum_in_last_ten_replies: 3
+
+    "🌸":
+      maximum_in_last_ten_replies: 3
+
+prohibited_emojis:
+  global:
+    - "🍆"
+    - "🍑"
+    - "💦"
+    - "🔞"
+    - "🖕"
+    - "💋"
+
+  reason: >
+    These can create sexual, aggressive or brand-inappropriate meanings
+    in follower interactions.
+
+special_cases:
+
+  japanese_injected:
+    emoji_count_adjustment: -1
+    preferred_maximum: 1
+
+  factual_correction:
+    preferred_emojis:
+      - "🤍"
+    allow_zero: true
+
+  brand_collaboration:
+    maximum: 0
+
+  medical_or_safety_context:
+    maximum: 0
+
+  grieving_or_distress:
+    maximum: 1
+    allowed:
+      - "🤍"
+
+fallback:
+  selected_emojis:
+    - "🤍"
+  emoji_count: 1
+  placement: sentence_end
+
+validation:
+  - "selected emoji count must not exceed the allowed maximum"
+  - "selected emojis must not contain prohibited values"
+  - "flag emoji require verified location"
+  - "food emoji must match the food context"
+  - "negative and sensitive replies must use zero or one emoji"
+  - "emoji combination must pass anti-repeat rules"

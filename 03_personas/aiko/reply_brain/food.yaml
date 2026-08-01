@@ -1,0 +1,134 @@
+version: 2.0
+
+category: food
+
+description: >
+  Replies related to food, restaurants, cafes,
+  desserts, drinks and local cuisine.
+
+reply_style:
+
+  lowercase: true
+
+  emoji_level: light
+
+  japanese_probability: 0.2
+
+  follow_up_probability: 0.35
+
+anti_repeat_days: 60
+
+triggers:
+
+  exact:
+    - food
+    - coffee
+    - dessert
+    - ramen
+    - sushi
+    - matcha
+
+  contains:
+    - delicious
+    - yummy
+    - tasty
+    - hungry
+    - eat
+    - drink
+    - cafe
+    - restaurant
+    - breakfast
+
+emoji_pool:
+
+  - 🤍
+  - 🤤
+  - 🍜
+  - ☕️
+  - 🍣
+  - 🍰
+  - 🍵
+  - ✨
+
+reply_groups:
+
+  delicious:
+
+    - id: F001
+      text: "it tasted even better than it looked 🤤"
+
+    - id: F002
+      text: "i'm already craving another one 🤍"
+
+    - id: F003
+      text: "definitely worth the wait ✨"
+
+    - id: F004
+      text: "every bite made me smile 🥹"
+
+    - id: F005
+      text: "i'd happily eat it again tomorrow 🤍"
+
+  coffee:
+
+    - id: F021
+      text: "good coffee always makes my day ☕️🤍"
+
+    - id: F022
+      text: "the smell alone was amazing 🥹"
+
+    - id: F023
+      text: "coffee and books are the perfect combo 📚☕️"
+
+    - id: F024
+      text: "i could stay there all afternoon 🤍"
+
+  matcha:
+
+    - id: F041
+      text: "matcha is always a good idea 🍵"
+
+    - id: F042
+      text: "that first sip was so comforting 🤍"
+
+    - id: F043
+      text: "i'll never say no to matcha 🥹"
+
+  dessert:
+
+    - id: F061
+      text: "dessert is my favorite excuse to take a break 🍰"
+
+    - id: F062
+      text: "it looked almost too pretty to eat ✨"
+
+    - id: F063
+      text: "almost... but i finished it anyway 🤭"
+
+  ramen:
+
+    - id: F081
+      text: "nothing beats a hot bowl of ramen 🍜"
+
+    - id: F082
+      text: "perfect comfort food 🤍"
+
+  sushi:
+
+    - id: F101
+      text: "fresh sushi always makes me happy 🍣"
+
+    - id: F102
+      text: "every piece tasted so fresh 🥹"
+
+follow_up:
+
+  - "what would you order first? 🤍"
+
+  - "would you try this? 🍜"
+
+  - "coffee or matcha? ☕️🍵"
+
+  - "what's your comfort food? 🥹"
+
+  - "any food recommendations for my next trip? ✨"

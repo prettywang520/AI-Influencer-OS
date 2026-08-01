@@ -1,0 +1,8 @@
+version: "1.0"
+
+schedule:
+  - date: "2026-07-29"
+    country: "South Korea"
+    city: "Seoul"
+    venue: "Ikseon-dong Hanok Village"
+    theme: "coffee_shop"

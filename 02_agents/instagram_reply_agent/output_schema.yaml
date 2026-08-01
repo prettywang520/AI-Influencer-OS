@@ -1,0 +1,189 @@
+version: "1.0"
+schema: instagram_reply_agent_output
+status: production
+
+required:
+  - request_id
+  - action
+  - approved
+  - analysis
+  - moderation
+
+properties:
+
+  request_id:
+    type: string
+
+  action:
+    type: string
+    allowed:
+      - publish
+      - ignore
+      - hold_for_review
+      - escalate
+      - block_recommended
+      - clarification_required
+
+  approved:
+    type: boolean
+
+  reply:
+    type:
+      - object
+      - null
+
+    properties:
+
+      text:
+        type:
+          - string
+          - null
+
+      language:
+        type:
+          - string
+          - null
+
+      word_count:
+        type: integer
+
+      emoji:
+        type: list
+
+      japanese_injected:
+        type: boolean
+
+      japanese_phrase:
+        type:
+          - string
+          - null
+
+      reply_id:
+        type:
+          - string
+          - null
+
+      library:
+        type:
+          - string
+          - null
+
+      reply_group:
+        type:
+          - string
+          - null
+
+  analysis:
+    type: object
+    required:
+      - primary_intent
+      - detected_emotion
+      - confidence
+
+    properties:
+
+      primary_intent:
+        type: string
+
+      secondary_intents:
+        type: list
+
+      detected_emotion:
+        type: string
+
+      reply_emotion:
+        type: string
+
+      confidence:
+        type: number
+        minimum: 0
+        maximum: 1
+
+      context_confidence:
+        type: number
+        minimum: 0
+        maximum: 1
+
+      selected_library:
+        type:
+          - string
+          - null
+
+      selected_group:
+        type:
+          - string
+          - null
+
+  validation:
+    type: object
+
+    properties:
+
+      passed:
+        type: boolean
+
+      failed_rules:
+        type: list
+
+      repeat_score:
+        type: number
+        minimum: 0
+        maximum: 1
+
+      unsupported_claims:
+        type: list
+
+  moderation:
+    type: object
+    required:
+      - spam
+      - harassment
+      - threat
+      - escalation_required
+
+    properties:
+
+      spam:
+        type: boolean
+
+      harassment:
+        type: boolean
+
+      threat:
+        type: boolean
+
+      sexual_content:
+        type: boolean
+
+      impersonation:
+        type: boolean
+
+      escalation_required:
+        type: boolean
+
+      reason:
+        type:
+          - string
+          - null
+
+  logging:
+    type: object
+
+    properties:
+
+      store_reply_history:
+        type: boolean
+
+      store_follower_memory:
+        type: boolean
+
+      moderation_event:
+        type: boolean
+
+validation:
+  - "publish action requires approved=true"
+  - "publish action requires non-empty reply text"
+  - "ignore action requires reply=null"
+  - "escalate action requires escalation_required=true"
+  - "reply text must contain no unsupported claims"
+  - "word count must not exceed platform limit"

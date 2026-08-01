@@ -1,23 +1,28 @@
-coffee_shop:
+default_style:
+  silhouette: "fitted, body-contouring, feminine and realistic"
+  exposure: "modest everyday clothing, never overtly revealing"
+  fit_rules:
+    - "clearly define the waist"
+    - "follow natural body contours"
+    - "use realistic fabric tension and folds"
+    - "avoid oversized or shapeless clothing"
+    - "match the activity and location"
 
-cream knit top
+tops:
+  - "fitted rib-knit top"
+  - "fitted knit polo"
+  - "body-contouring baby tee"
+  - "square-neck fitted top"
+  - "fitted mock-neck top"
+  - "sleeveless rib-knit top"
 
-beige skirt
+bottoms:
+  - "high-waisted pleated skirt"
+  - "fitted denim skirt"
+  - "high-waisted tailored shorts"
+  - "slim straight-leg jeans"
 
-white sneakers
-
-bookstore:
-
-white linen dress
-
-cream cardigan
-
-airport:
-
-black blazer
-
-white trousers
-
-luxury_hotel:
-
-silk dress
+dresses:
+  - "fitted knit midi dress"
+  - "waist-defined travel dress"
+  - "body-contouring ribbed dress with modest neckline"

@@ -1,0 +1,309 @@
+version: "1.0"
+
+# AIKO OS — Reply Brain classification + style rules (Phase 8C)
+#
+# This file centralises:
+#   1. which existing persona reply library (under
+#      03_personas/aiko/reply_brain/) each classification category
+#      reuses, for BOTH classification keywords (that library's own
+#      `triggers:` block) and reply text (`replies` / `reply_groups` /
+#      `follow_up`);
+#   2. extra keywords for the 3 categories that have no existing
+#      persona library (compliment, brand_collaboration, sensitive);
+#   3. the Aiko reply style rules (word count, emoji limit, banned
+#      AI-mention phrases).
+#
+# The safety ROUTE for each category (auto_eligible /
+# human_review_required / never_reply) is deliberately NOT configured
+# here — it is hardcoded in src/social/reply_safety.py as the single
+# source of truth, matching the exact routing table from the Phase 8C
+# spec, so it cannot silently drift out of sync with this file.
+
+persona:
+  # Relative to the AI-Influencer-OS repository root.
+  reply_brain_root: "03_personas/aiko/reply_brain"
+
+style:
+  minimum_words: 5
+  maximum_words: 25
+  maximum_emojis: 2
+  banned_phrases:
+    - "as an ai"
+    - "i'm an ai"
+    - "i am an ai"
+    - "i'm a bot"
+    - "i am a bot"
+    - "language model"
+    - "as a language model"
+    - "i don't have feelings"
+    - "i cannot feel"
+    - "artificial intelligence"
+
+emoji_detection:
+  # A comment (or reply) is "emoji_only" when, after stripping
+  # whitespace, nothing but characters matching this pattern remain.
+  pattern: "[\U0001F1E0-\U0001F1FF\U0001F300-\U0001F5FF\U0001F600-\U0001F64F\U0001F680-\U0001F6FF\U0001F900-\U0001F9FF\U00002600-\U000026FF\U00002700-\U000027BF\U0000FE0F\U0000200D]+"
+
+classification:
+  # Checked in this order; first keyword match wins. emoji_only is
+  # detected structurally (see reply_brain.py) and does not use
+  # keywords, but its position here still documents priority intent.
+  priority:
+    - emoji_only
+    - spam
+    - negative
+    - flirting
+    - brand_collaboration
+    - sensitive
+    - camera_question
+    - outfit_question
+    - hotel_question
+    - food_question
+    - travel_question
+    - location_question
+    - casual_chat
+    - compliment
+    - unknown
+
+  categories:
+    compliment:
+      # compliments.yaml has no triggers: block of its own, so the
+      # keyword list lives here.
+      source_library: compliments
+      keywords:
+        - beautiful
+        - gorgeous
+        - stunning
+        - amazing
+        - so pretty
+        - so cute
+        - adorable
+        - perfect
+        - incredible
+        - love this
+        - love your
+        - queen
+        - goddess
+        - flawless
+        - wow
+        - obsessed with this
+
+    emoji_only:
+      # Structural match only; reuses the compliments pool since an
+      # emoji-only comment is essentially a wordless compliment.
+      source_library: compliments
+      keywords: []
+
+    travel_question:
+      source_library: travel
+
+    location_question:
+      source_library: location
+
+    food_question:
+      source_library: food
+
+    outfit_question:
+      source_library: outfit
+
+    camera_question:
+      source_library: camera
+
+    hotel_question:
+      source_library: hotel
+
+    casual_chat:
+      source_library: engagement
+
+    flirting:
+      source_library: flirting
+
+    negative:
+      source_library: negative
+
+    spam:
+      # spam.yaml has no reply text at all (never_reply) — its
+      # categories.*.keywords are read directly by reply_brain.py.
+      source_library: spam
+
+    brand_collaboration:
+      # No existing persona library for this category.
+      source_library: null
+      keywords:
+        - collab
+        - collaboration
+        - sponsor
+        - sponsorship
+        - partnership
+        - brand deal
+        - paid post
+        - press kit
+        - media kit
+        - rate card
+        - affiliate program
+        - become an ambassador
+        - work with us
+        - promote your brand
+        - business inquiry
+        - marketing opportunity
+      fallback_replies:
+        - "thank you for reaching out, i'd love to hear more about this 🤍"
+        - "this sounds interesting, let's talk more about it 🌸"
+        - "thanks so much, i'll take a closer look at this 🤍"
+
+    sensitive:
+      # No existing persona library for this category. Kept
+      # intentionally small and conservative; extend with care.
+      source_library: null
+      keywords:
+        - suicide
+        - self harm
+        - self-harm
+        - kill myself
+        - home address
+        - phone number
+        - personal number
+        - where do you live
+        - meet in person
+        - meet up with you
+      fallback_replies:
+        - "thank you for your comment, i want to make sure i respond thoughtfully 🤍"
+
+    unknown:
+      # Also used for text a keyword classifier cannot confidently
+      # place, including non-English comments (see reply_brain.py).
+      source_library: null
+      keywords: []
+      fallback_replies:
+        - "thank you so much for this 🤍"
+        - "aww thank you for sharing this 🌸"
+        - "sending you love from here 🤍"
+
+# ---------------------------------------------------------------------------
+# Phase 8F — Instagram DM classification extras (src/social/dm_reply_brain.py)
+# ---------------------------------------------------------------------------
+#
+# These 4 categories exist only for DMs and are read only by
+# dm_reply_brain.py — they are NOT part of classification.priority /
+# classification.categories above, so reply_brain.py (the comment
+# pipeline) never sees them and comment classification behavior is
+# completely unchanged by this section. Everything else DM messages
+# can be classified as (compliment, casual_chat, travel/location/
+# food/outfit/camera/hotel_question, flirting, negative, spam,
+# brand_collaboration, sensitive, unknown) reuses the classification
+# section above via reply_brain.ReplyBrain, unmodified.
+dm_extra_categories:
+  categories:
+    sexual:
+      # never_reply — no fallback_replies at all, matching spam's
+      # existing pattern: a never_reply category must never be able
+      # to generate a reply, even by accident.
+      keywords:
+        - nudes
+        - nude pics
+        - send nudes
+        - sex chat
+        - sexy pics
+        - onlyfans
+        - dick pic
+        - horny
+        - dtf
+        - fwb
+        - hookup tonight
+        - send me a pic of your body
+
+    harassment:
+      # never_reply — no fallback_replies, same reasoning as sexual.
+      keywords:
+        - kill yourself
+        - kys
+        - you're ugly
+        - youre ugly
+        - i will find you
+        - i know where you live
+        - threat
+        - hate you so much
+        - go die
+        - worthless
+
+    booking_request:
+      # human_review_required — professional draft only, never a
+      # casual fan reply (requirement 14). No existing persona
+      # library covers paid bookings/appearances.
+      keywords:
+        # "book you" alone was removed 2026-07-31: it false-matched
+        # unrelated phrases like "...what's the last book you
+        # couldn't put down?" (a fan quoting Aiko's own reel caption
+        # back to her). Same failure mode as "iso" false-matching
+        # Portuguese "sorriso" in Phase 8C — kept the phrase, dropped
+        # the ambiguous short form.
+        - booking inquiry
+        - hire you
+        - available for booking
+        - book a stay with you
+        - travel with you
+        - book you for
+        - can i book you
+        - book you as
+        - paid appearance
+        - meet and greet booking
+        - itinerary planning service
+        - plan my trip
+      fallback_replies:
+        - "thank you so much for your interest — for booking or travel planning details i'll have my team follow up with you properly 🤍"
+        - "i really appreciate you reaching out about this — someone from my team will get back to you with the details soon 🤍"
+
+    fan_support:
+      # auto_eligible — warm general encouragement/support that isn't
+      # specifically a compliment on appearance/photos. No existing
+      # persona library covers this tone, so fallback_replies are
+      # defined directly here.
+      keywords:
+        - keep going
+        - so proud of you
+        - you inspire me
+        - you've got this
+        - youve got this
+        - rooting for you
+        - sending you support
+        - sending support
+        - biggest fan
+        - big fan of yours
+        - you always make my day
+        - you make my day
+      fallback_replies:
+        - "this means so much to me, thank you for always supporting me 🤍"
+        - "you have no idea how much this made me smile today 🌸"
+        - "thank you for being here, it really means a lot to me 🤍"
+
+# ---------------------------------------------------------------------------
+# Phase 8F — DM reply style (src/social/dm_reply_brain.py)
+# ---------------------------------------------------------------------------
+#
+# DMs allow a longer reply than comments (up to 80 words vs. 25) but
+# share the same emoji limit. extra_banned_phrases layers on top of
+# style.banned_phrases above as defense-in-depth against political/
+# religious discussion, unkeepable promises, sharing private contact
+# details, and financial/medical/legal advice (requirement 13) — the
+# actual reply pool is hand-curated to already avoid these, so this
+# is a safety net, not the primary control.
+dm_style:
+  minimum_words: 3
+  maximum_words: 80
+  maximum_emojis: 2
+  extra_banned_phrases:
+    - "i promise"
+    - "i guarantee"
+    - "my phone number"
+    - "my address"
+    - "my home address"
+    - "call me at"
+    - "text me at"
+    - "my email is"
+    - "legal advice"
+    - "medical advice"
+    - "financial advice"
+    - "investment advice"
+    - "you should vote"
+    - "abortion"
+    - "election"

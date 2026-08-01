@@ -1,0 +1,89 @@
+version: "1.0"
+
+# AIKO OS — Auto Daily Director (Phase 9)
+#
+# Orchestrates the existing (working) production pipeline into one
+# command that PREPARES local files only: no image is generated
+# through an API, nothing is published, and no comment/DM system is
+# touched. This file centralises the output layout and content-style
+# limits new to Phase 9; it does not duplicate anything already
+# configured for the underlying engines (planning YAML, motion rules,
+# calendar) — those stay exactly where they already live.
+
+output:
+  # All relative to the app root (10_apps/claude_runtime).
+  root: "output"
+  history_dir: "output/history"
+  logs_dir: "output/logs"
+
+  wardrobe_history_file: "wardrobe.json"
+  log_filename_template: "auto_daily_director_{date}.json"
+
+  # Filenames within output/<date>/ — matches the exact tree required
+  # by Phase 9 (requirement 6).
+  content_plan_file: "content_plan.json"
+  production_manifest_file: "production_manifest.json"
+  dashboard_file: "dashboard.md"
+
+  prompts_dir: "prompts"
+  reel_prompts_dir: "prompts/reels"
+  captions_dir: "captions"
+  hashtags_dir: "hashtags"
+  queues_dir: "queues"
+  images_dir: "images"
+
+  feed_prompt_file: "feed_prompt.txt"
+  story_prompt_template: "story_{index}_prompt.txt"
+  reel_prompt_template: "shot_{index:02d}_prompt.txt"
+
+  feed_caption_file: "feed_caption.txt"
+  story_caption_template: "story_{index}_caption.txt"
+  reel_caption_file: "reel_caption.txt"
+  threads_post_file: "threads_post.txt"
+
+  feed_hashtags_file: "feed_hashtags.txt"
+  reel_hashtags_file: "reel_hashtags.txt"
+  threads_hashtags_file: "threads_hashtags.txt"
+
+  image_queue_file: "image_queue.json"
+  reel_queue_file: "reel_queue.json"
+
+caption_style:
+  # Requirement 13 — Aiko voice.
+  maximum_words: 80
+  maximum_emojis: 3
+  # requirement 13 says "emojis allowed but not excessive" (no fixed
+  # cap given) — 3 is a generous-but-bounded ceiling, matching the
+  # style already visible in the existing (now-replaced) hardcoded
+  # captions, which used 2-3 emoji per line.
+
+threads_style:
+  # Requirement 12.
+  maximum_characters: 280
+  maximum_emojis: 2
+
+hashtags:
+  # Requirement 6 — per-channel hashtag files.
+  feed_count: 12
+  reel_count: 8
+  threads_count: 3
+
+wardrobe:
+  # Requirement 10. Mirrors the flags already declared (but never
+  # implemented) in 03_personas/aiko/wardrobe/rules.yaml.
+  no_same_outfit_two_days: true
+  no_same_top_three_days: true
+
+  # Fallback pieces used only when a season has no data at all in
+  # 03_personas/aiko/wardrobe/*.yaml (today: winter has no bottoms
+  # entry, and outerwear.yaml/season.yaml are both empty).
+  fallback_top: "fitted long sleeve top"
+  fallback_bottom: "high waist trousers"
+  fallback_dress: "fitted knit dress"
+  fallback_shoes: "white sneakers"
+  fallback_bag: "cream leather shoulder bag"
+  fallback_jewellery: "minimal gold jewellery"
+  fallback_hair: "long silky loose hair"
+
+quality_gate:
+  minimum_daily_details: 3

@@ -1,0 +1,745 @@
+version: "1.0"
+engine: intent_engine
+status: production
+character: aiko_sato
+
+description: >
+  Detects the primary and secondary intent of an Instagram comment,
+  reply or direct message before selecting a reply library.
+
+objectives:
+  - identify what the follower wants
+  - separate intent from emotion
+  - route the comment to the correct reply library
+  - avoid replying to spam, harassment or unsafe requests
+  - prioritise context-specific responses over generic replies
+
+input:
+  required:
+    - message_text
+
+  optional:
+    - platform
+    - content_type
+    - post_caption
+    - post_location
+    - post_activity
+    - post_topic
+    - previous_comment
+    - previous_reply
+    - follower_history
+    - language_hint
+
+output:
+  required:
+    - primary_intent
+    - confidence
+    - selected_library
+    - action
+
+  optional:
+    - secondary_intents
+    - matched_triggers
+    - context_requirements
+    - moderation_reason
+    - suggested_reply_group
+
+confidence_thresholds:
+  high: 0.85
+  medium: 0.65
+  low: 0.45
+  unknown_below: 0.45
+
+actions:
+  reply:
+    description: Generate and publish a reply.
+
+  reply_once:
+    description: Reply once, then stop if the discussion becomes repetitive.
+
+  ask_clarification:
+    description: Ask one short clarification question.
+
+  ignore:
+    description: Do not reply.
+
+  flag:
+    description: Send for manual review.
+
+  block:
+    description: Block or restrict the account when platform tools allow.
+
+  escalate:
+    description: Send to a human operator immediately.
+
+intent_priority:
+  - safety_threat
+  - harassment
+  - spam
+  - brand_collaboration
+  - factual_correction
+  - location_question
+  - product_question
+  - travel_question
+  - food_question
+  - hotel_question
+  - camera_question
+  - outfit_question
+  - language_question
+  - negative_feedback
+  - flirtation
+  - compliment
+  - engagement
+  - greeting
+  - emoji_only
+  - unknown
+
+intent_definitions:
+
+  safety_threat:
+    library: negative
+    action: escalate
+    priority: critical
+
+    triggers:
+      contains:
+        - "i will find you"
+        - "i know where you live"
+        - "i'm coming for you"
+        - "you will regret this"
+        - "i'll hurt you"
+        - "kill yourself"
+        - "i will expose you"
+        - "i have your address"
+
+    rules:
+      - "do not reply conversationally"
+      - "preserve necessary evidence"
+      - "flag and escalate immediately"
+
+  harassment:
+    library: negative
+    action: ignore
+    priority: critical
+
+    triggers:
+      contains:
+        - "send nudes"
+        - "show your body"
+        - "private photos"
+        - "stupid girl"
+        - "ugly"
+        - "whore"
+        - "slut"
+        - "bitch"
+        - "i won't stop messaging"
+        - "answer me now"
+
+    rules:
+      - "ignore isolated abuse"
+      - "flag repeated harassment"
+      - "block persistent accounts"
+
+  spam:
+    library: spam
+    action: ignore
+    priority: critical
+
+    triggers:
+      contains:
+        - "follow for follow"
+        - "f4f"
+        - "dm for promotion"
+        - "promote it on"
+        - "crypto investment"
+        - "guaranteed profit"
+        - "message me on telegram"
+        - "message me on whatsapp"
+        - "claim your prize"
+        - "verify your account"
+        - "instagram support"
+        - "meta support"
+
+    rules:
+      - "use spam scoring"
+      - "never reply to obvious spam"
+      - "route credible business enquiries separately"
+
+  brand_collaboration:
+    library: brand_collaboration_agent
+    action: flag
+    priority: very_high
+
+    triggers:
+      contains:
+        - "brand collaboration"
+        - "paid partnership"
+        - "sponsorship"
+        - "campaign proposal"
+        - "media kit"
+        - "collab opportunity"
+        - "product gifting"
+        - "ambassador programme"
+        - "ambassador program"
+        - "usage rights"
+        - "whitelisting"
+        - "deliverables"
+        - "campaign budget"
+
+    context_requirements:
+      - company_name
+      - campaign_scope
+      - contact_email
+
+    rules:
+      - "do not negotiate complex commercial terms in public comments"
+      - "route to the brand collaboration workflow"
+      - "verify the sender before opening files or links"
+
+  factual_correction:
+    library: negative
+    action: reply_once
+    priority: high
+
+    triggers:
+      contains:
+        - "that's incorrect"
+        - "wrong information"
+        - "this place is closed"
+        - "the address is wrong"
+        - "that's not in tokyo"
+        - "you misspelled"
+        - "the price changed"
+        - "this isn't accurate"
+
+    suggested_reply_group: accusation
+
+    rules:
+      - "thank the user calmly"
+      - "verify before admitting or rejecting the correction"
+      - "update published information when confirmed"
+
+  location_question:
+    library: location
+    action: reply
+    priority: high
+
+    triggers:
+      exact:
+        - "where?"
+        - "location?"
+        - "where is this?"
+
+      contains:
+        - "where is this"
+        - "where are you"
+        - "what place is this"
+        - "which city"
+        - "which country"
+        - "what's the location"
+        - "can you share the address"
+        - "how do i get there"
+
+    suggested_reply_group: generic
+
+    context_requirements:
+      - current_location
+
+    rules:
+      - "never invent an address"
+      - "provide exact venue details only when verified"
+      - "use city-level information when the exact venue is unavailable"
+
+  product_question:
+    library: shopping
+    action: reply
+    priority: high
+
+    triggers:
+      contains:
+        - "where did you buy this"
+        - "what did you buy"
+        - "what brand is this"
+        - "how much was it"
+        - "do you have a link"
+        - "where can i order"
+        - "what is the product name"
+        - "is this available online"
+
+    context_requirements:
+      - product_name
+      - product_brand
+
+    rules:
+      - "never invent a brand, link or price"
+      - "disclose sponsored or gifted products when required"
+
+  travel_question:
+    library: travel
+    action: reply
+    priority: high
+
+    triggers:
+      contains:
+        - "when should i visit"
+        - "how many days"
+        - "is it safe to travel"
+        - "what should i do there"
+        - "any travel tips"
+        - "what's your itinerary"
+        - "where should i stay"
+        - "how did you get there"
+        - "is it worth visiting"
+        - "first time in japan"
+        - "what should i pack"
+        - "best time to go"
+
+    suggested_reply_group: planning
+
+    rules:
+      - "avoid unverified legal, visa or safety advice"
+      - "keep ordinary replies short"
+      - "route detailed itinerary requests to a longer response workflow"
+
+  food_question:
+    library: food
+    action: reply
+    priority: high
+
+    triggers:
+      contains:
+        - "what are you eating"
+        - "what dish is this"
+        - "where is this restaurant"
+        - "is it delicious"
+        - "how much was the food"
+        - "what did it taste like"
+        - "is it spicy"
+        - "what do you recommend"
+        - "what should i order"
+        - "does it contain"
+
+    suggested_reply_group: delicious
+
+    rules:
+      - "never give unverified allergen information"
+      - "do not describe taste as fact when the content is fictional"
+      - "use creative-story context honestly where relevant"
+
+  hotel_question:
+    library: hotel
+    action: reply
+    priority: high
+
+    triggers:
+      contains:
+        - "which hotel"
+        - "what hotel is this"
+        - "where did you stay"
+        - "how much is the room"
+        - "is the hotel worth it"
+        - "how was the service"
+        - "what room type"
+        - "is breakfast included"
+        - "does it have a pool"
+        - "how was the spa"
+
+    suggested_reply_group: hotel_identification
+
+    rules:
+      - "never invent hotel pricing or availability"
+      - "never promise upgrades or discounts"
+      - "disclose partnerships where required"
+
+  camera_question:
+    library: camera
+    action: reply
+    priority: high
+
+    triggers:
+      contains:
+        - "what camera"
+        - "which camera"
+        - "what lens"
+        - "camera settings"
+        - "what preset"
+        - "how did you edit"
+        - "who took this"
+        - "was this shot on a phone"
+        - "what aperture"
+        - "what iso"
+        - "what focal length"
+
+    suggested_reply_group: camera_identification
+
+    rules:
+      - "never invent camera metadata"
+      - "never claim AI-generated visuals were physically photographed"
+      - "use verified production context only"
+
+  outfit_question:
+    library: outfit
+    action: reply
+    priority: high
+
+    triggers:
+      contains:
+        - "where is your dress from"
+        - "what brand is your outfit"
+        - "outfit details"
+        - "dress link"
+        - "what shoes"
+        - "where is your bag from"
+        - "what are you wearing"
+        - "what size are you wearing"
+        - "does it fit true to size"
+
+    suggested_reply_group: outfit_details
+
+    rules:
+      - "never invent brand, sizing, price or links"
+      - "avoid body comparison language"
+      - "do not make unsupported fit claims"
+
+  language_question:
+    library: japanese
+    action: reply
+    priority: high
+
+    triggers:
+      contains:
+        - "what does this mean"
+        - "how do you say"
+        - "teach me japanese"
+        - "what is this in japanese"
+        - "how do you pronounce"
+        - "do you speak japanese"
+        - "what does arigato mean"
+
+    suggested_reply_group: language_question_replies
+
+    rules:
+      - "provide simple and natural language explanations"
+      - "avoid inaccurate literal translation"
+      - "include romaji only when requested"
+
+  negative_feedback:
+    library: negative
+    action: reply_once
+    priority: medium_high
+
+    triggers:
+      contains:
+        - "i don't like this"
+        - "this is boring"
+        - "overrated"
+        - "too expensive"
+        - "looks fake"
+        - "too edited"
+        - "not authentic"
+        - "waste of money"
+        - "disappointing"
+        - "unfollowing"
+
+    suggested_reply_group: different_taste
+
+    rules:
+      - "reply at most once"
+      - "do not argue"
+      - "ignore obvious bait"
+
+  flirtation:
+    library: flirting
+    action: reply
+    priority: medium
+
+    triggers:
+      contains:
+        - "marry me"
+        - "date me"
+        - "my wife"
+        - "my girlfriend"
+        - "i love you"
+        - "dream girl"
+        - "my crush"
+        - "take my heart"
+        - "beautiful lady"
+        - "gorgeous girl"
+
+    suggested_reply_group: gentle_compliment
+
+    rules:
+      - "keep replies playful and non-sexual"
+      - "never promise private contact or a relationship"
+      - "apply minor-safety restrictions"
+
+  compliment:
+    library: compliments
+    action: reply
+    priority: medium
+
+    triggers:
+      exact:
+        - "beautiful"
+        - "gorgeous"
+        - "stunning"
+        - "cute"
+        - "pretty"
+        - "amazing"
+        - "lovely"
+
+      contains:
+        - "you look beautiful"
+        - "love this photo"
+        - "amazing picture"
+        - "beautiful smile"
+        - "you look stunning"
+        - "love your content"
+        - "your page is beautiful"
+        - "such a lovely moment"
+        - "great post"
+
+    suggested_reply_group: general_compliment
+
+    rules:
+      - "use context-aware compliments when possible"
+      - "avoid repeating generic gratitude phrases"
+
+  engagement:
+    library: engagement
+    action: reply
+    priority: medium
+
+    triggers:
+      contains:
+        - "me too"
+        - "same"
+        - "i agree"
+        - "i would choose"
+        - "my favourite"
+        - "my favorite"
+        - "you should visit"
+        - "come to my country"
+        - "take me with you"
+        - "this is on my bucket list"
+        - "i've been there"
+        - "i recommend"
+
+    suggested_reply_group: simple_agreement
+
+    rules:
+      - "continue the conversation naturally"
+      - "ask no more than one follow-up question"
+      - "do not ask a question on every reply"
+
+  greeting:
+    library: japanese
+    action: reply
+    priority: low
+
+    triggers:
+      exact:
+        - "hello"
+        - "hi"
+        - "hey"
+        - "good morning"
+        - "good evening"
+        - "konnichiwa"
+        - "ohayo"
+
+    suggested_reply_group: greetings
+
+    rules:
+      - "match time-based greetings only when local time is known"
+      - "otherwise use a neutral greeting"
+
+  emoji_only:
+    library: engagement
+    action: reply
+    priority: low
+
+    triggers:
+      regex:
+        - "^[\\p{Emoji}\\s]+$"
+
+    suggested_reply_group: simple_agreement
+
+    rules:
+      - "reply only to meaningful positive emoji combinations"
+      - "ignore repetitive bot-like emoji strings"
+      - "keep the response very short"
+
+  unknown:
+    library: engagement
+    action: ask_clarification
+    priority: lowest
+
+    rules:
+      - "use only when the comment appears genuine"
+      - "do not clarify spam, abuse or meaningless text"
+      - "ask one short and natural question"
+
+multi_intent_rules:
+
+  - condition:
+      primary: location_question
+      secondary: compliment
+    selected_library: location
+    strategy: >
+      Answer the location question first, then acknowledge the compliment
+      only when the reply remains under 25 words.
+
+  - condition:
+      primary: outfit_question
+      secondary: compliment
+    selected_library: outfit
+    strategy: >
+      Answer the outfit question directly and add a brief warm reaction.
+
+  - condition:
+      primary: camera_question
+      secondary: compliment
+    selected_library: camera
+    strategy: >
+      Prioritise verified equipment or creative-process information.
+
+  - condition:
+      primary: hotel_question
+      secondary: travel_question
+    selected_library: hotel
+    strategy: >
+      Answer the hotel-specific question first.
+
+  - condition:
+      primary: food_question
+      secondary: location_question
+    selected_library: food
+    strategy: >
+      Answer the dish question and add the venue only when both are verified.
+
+  - condition:
+      primary: flirtation
+      secondary: harassment
+    selected_library: negative
+    action: ignore
+    strategy: >
+      Safety classification overrides playful flirtation.
+
+  - condition:
+      primary: brand_collaboration
+      secondary: spam
+    selected_library: spam
+    action: flag
+    strategy: >
+      Treat suspicious commercial messages as spam until verified.
+
+negation_rules:
+  examples:
+    - message: "this isn't ugly at all"
+      do_not_classify_as:
+        - harassment
+        - negative_feedback
+
+    - message: "i don't think this is overrated"
+      do_not_classify_as:
+        - negative_feedback
+
+    - message: "not fake — it looks beautiful"
+      classify_as:
+        - compliment
+
+question_detection:
+  markers:
+    - "?"
+    - "where"
+    - "what"
+    - "which"
+    - "when"
+    - "how"
+    - "why"
+    - "can"
+    - "could"
+    - "would"
+    - "do"
+    - "is"
+    - "are"
+
+  rule: >
+    A question marker increases question-intent confidence but does not
+    determine the category without semantic matching.
+
+language_handling:
+  supported:
+    - english
+    - japanese
+    - traditional_chinese
+    - simplified_chinese
+
+  rules:
+    - "reply in the language used by the follower where possible"
+    - "do not switch languages without a reason"
+    - "Japanese injection follows japanese_engine rules"
+    - "retain proper venue and brand names in their official form"
+
+fallback:
+  genuine_comment:
+    primary_intent: engagement
+    selected_library: engagement
+    action: reply
+
+  meaningless_comment:
+    primary_intent: unknown
+    selected_library: null
+    action: ignore
+
+validation:
+  - "exactly one primary intent is required"
+  - "secondary intents may contain zero to three items"
+  - "selected library must exist"
+  - "safety intent always overrides engagement intent"
+  - "confidence must be between 0 and 1"
+  - "do not use context fields that are absent or unverified"
+
+example_classifications:
+
+  - message: "beautiful photo! where is this?"
+    primary_intent: location_question
+    secondary_intents:
+      - compliment
+    selected_library: location
+    suggested_reply_group: generic
+    action: reply
+    confidence: 0.98
+
+  - message: "what camera and lens did you use?"
+    primary_intent: camera_question
+    secondary_intents: []
+    selected_library: camera
+    suggested_reply_group: camera_identification
+    action: reply
+    confidence: 0.99
+
+  - message: "come to brazil, i'll show you all the hidden places"
+    primary_intent: engagement
+    secondary_intents:
+      - travel_question
+    selected_library: engagement
+    suggested_reply_group: visit_my_country
+    action: reply
+    confidence: 0.94
+
+  - message: "marry me 😍"
+    primary_intent: flirtation
+    secondary_intents:
+      - compliment
+    selected_library: flirting
+    suggested_reply_group: marry_me
+    action: reply
+    confidence: 0.98
+
+  - message: "dm me for guaranteed crypto profits"
+    primary_intent: spam
+    secondary_intents: []
+    selected_library: spam
+    action: ignore
+    confidence: 1.00

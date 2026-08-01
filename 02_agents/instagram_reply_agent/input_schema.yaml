@@ -1,0 +1,248 @@
+version: "1.0"
+schema: instagram_reply_agent_input
+status: production
+
+required:
+  - request_id
+  - platform
+  - comment
+  - content
+  - timestamp
+
+properties:
+
+  request_id:
+    type: string
+    description: Unique execution identifier.
+
+  platform:
+    type: string
+    allowed:
+      - instagram_feed
+      - instagram_reel
+      - instagram_story
+      - instagram_thread
+
+  timestamp:
+    type: datetime
+
+  comment:
+    type: object
+    required:
+      - comment_id
+      - text
+      - follower_id
+
+    properties:
+
+      comment_id:
+        type: string
+
+      parent_comment_id:
+        type:
+          - string
+          - null
+
+      text:
+        type: string
+        minimum_length: 1
+        maximum_length: 2200
+
+      follower_id:
+        type: string
+        privacy: hash_before_storage
+
+      follower_username:
+        type:
+          - string
+          - null
+
+      language_hint:
+        type:
+          - string
+          - null
+
+      created_at:
+        type: datetime
+
+  content:
+    type: object
+    required:
+      - content_id
+      - content_type
+
+    properties:
+
+      content_id:
+        type: string
+
+      content_type:
+        type: string
+        allowed:
+          - feed
+          - reel
+          - story
+          - thread
+
+      caption:
+        type:
+          - string
+          - null
+
+      topic:
+        type:
+          - string
+          - null
+
+      location:
+        type:
+          - string
+          - null
+
+      city:
+        type:
+          - string
+          - null
+
+      country:
+        type:
+          - string
+          - null
+
+      venue:
+        type:
+          - string
+          - null
+
+      activity:
+        type:
+          - string
+          - null
+
+      emotion:
+        type:
+          - string
+          - null
+
+      story_stage:
+        type:
+          - string
+          - null
+
+      ai_generated:
+        type: boolean
+        default: true
+
+      sponsored:
+        type: boolean
+        default: false
+
+      gifted:
+        type: boolean
+        default: false
+
+      hosted:
+        type: boolean
+        default: false
+
+  production_metadata:
+    type:
+      - object
+      - null
+
+    properties:
+
+      verified_location:
+        type:
+          - string
+          - null
+
+      verified_venue:
+        type:
+          - string
+          - null
+
+      verified_brand:
+        type:
+          - string
+          - null
+
+      verified_product:
+        type:
+          - string
+          - null
+
+      verified_camera:
+        type:
+          - string
+          - null
+
+      photographer_credit:
+        type:
+          - string
+          - null
+
+      disclosure_text:
+        type:
+          - string
+          - null
+
+  conversation:
+    type:
+      - object
+      - null
+
+    properties:
+
+      previous_comments:
+        type: list
+        maximum_items: 20
+
+      previous_replies:
+        type: list
+        maximum_items: 20
+
+      unresolved_question:
+        type:
+          - string
+          - null
+
+  follower_memory:
+    type:
+      - object
+      - null
+
+    properties:
+
+      preferred_name:
+        type:
+          - string
+          - null
+
+      language:
+        type:
+          - string
+          - null
+
+      recurring_commenter:
+        type: boolean
+        default: false
+
+      interests:
+        type: list
+
+      previous_boundary:
+        type: boolean
+        default: false
+
+      moderation_status:
+        type:
+          - string
+          - null
+
+validation:
+  - "comment text must not be empty"
+  - "content identifier must exist"
+  - "follower identifier must be privacy-safe before logging"
+  - "unverified metadata must remain null"
+  - "AI-generated status must be explicitly resolved"

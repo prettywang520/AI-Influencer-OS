@@ -1,0 +1,99 @@
+version: 2.0
+
+category: location
+
+description: >
+  Replies for questions asking where a place is.
+
+reply_style:
+
+  lowercase: true
+
+  emoji_level: light
+
+  japanese_probability: 0.15
+
+  follow_up_probability: 0.30
+
+anti_repeat_days: 45
+
+triggers:
+
+  exact:
+
+    - where
+
+    - location
+
+    - place
+
+  contains:
+
+    - where is this
+
+    - where are you
+
+    - what place
+
+    - location
+
+emoji_pool:
+
+  - 📍
+  - 🇯🇵
+  - 🌸
+  - 🤍
+  - ✨
+
+reply_groups:
+
+  tokyo:
+
+    - id: L001
+      text: "this is tokyo 🇯🇵 one of my favorite cities."
+
+    - id: L002
+      text: "tokyo always surprises me ✨"
+
+    - id: L003
+      text: "i could spend weeks exploring tokyo 🤍"
+
+  kyoto:
+
+    - id: L021
+      text: "this is beautiful kyoto 🌸"
+
+    - id: L022
+      text: "kyoto feels peaceful in every season 🤍"
+
+    - id: L023
+      text: "one morning in kyoto is never enough 🥹"
+
+  osaka:
+
+    - id: L041
+      text: "osaka is heaven for food lovers 🍜"
+
+    - id: L042
+      text: "every street in osaka has amazing energy ✨"
+
+  generic:
+
+    - id: L061
+      text: "it's in japan 🇯🇵 definitely worth adding to your travel list."
+
+    - id: L062
+      text: "one of my favorite places so far 🤍"
+
+    - id: L063
+      text: "you should visit if you ever get the chance 🌸"
+
+follow_up:
+
+  - "would you like to visit? 🤍"
+
+  - "have you been here before? 🌸"
+
+  - "which city would you choose? ✈️"
+
+  - "where should i explore next? 🗺️"

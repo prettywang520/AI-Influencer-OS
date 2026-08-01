@@ -1,0 +1,49 @@
+version: "1.0"
+database: weather
+
+weather:
+
+  sunny:
+    details:
+      - sunglasses
+      - strong shadows
+      - bright sunlight
+
+  cloudy:
+    details:
+      - soft lighting
+      - grey sky
+
+  rain:
+    details:
+      - transparent umbrella
+      - wet pavement
+      - window reflection
+      - rain droplets
+      - damp hair
+
+  windy:
+    details:
+      - hair blowing
+      - moving dress
+
+  snow:
+    details:
+      - snowflakes
+      - winter coat
+      - visible breath
+
+  humid:
+    details:
+      - cold drink
+      - slight forehead shine
+
+  sunset:
+    details:
+      - golden light
+      - long shadows
+
+  night:
+    details:
+      - neon lights
+      - lantern glow

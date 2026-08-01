@@ -1,0 +1,49 @@
+camera_strap:
+
+  category:
+
+    accessory
+
+  applies_to:
+
+    - bookstore
+
+    - street_food
+
+    - sightseeing
+
+wallet:
+
+  category:
+
+    accessory
+
+receipt:
+
+  category:
+
+    shopping
+
+umbrella:
+
+  category:
+
+    weather
+
+bubble_tea:
+
+  category:
+
+    food
+
+shopping_bag:
+
+  category:
+
+    shopping
+
+passport:
+
+  category:
+
+    airport

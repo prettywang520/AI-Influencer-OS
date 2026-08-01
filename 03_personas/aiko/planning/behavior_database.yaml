@@ -1,0 +1,74 @@
+version: "1.0"
+database: behavior
+
+behaviors:
+
+  compare_books:
+    title: Compare Books
+    description: Comparing two books before making a decision.
+    category: bookstore
+    movement: static
+    requires_interaction: false
+
+  ask_staff:
+    title: Ask Staff
+    description: Asking a staff member for recommendations.
+    category: bookstore
+    movement: conversational
+    requires_interaction: true
+
+  browse_books:
+    title: Browse Books
+    description: Looking through bookshelves.
+    category: bookstore
+    movement: walking
+    requires_interaction: false
+
+  write_journal:
+    title: Write Journal
+    description: Writing travel ideas in a notebook.
+    category: cafe
+    movement: seated
+    requires_interaction: false
+
+  order_coffee:
+    title: Order Coffee
+    description: Ordering a drink from the barista.
+    category: coffee_shop
+    movement: standing
+    requires_interaction: true
+
+  receive_drink:
+    title: Receive Drink
+    description: Receiving coffee with both hands.
+    category: coffee_shop
+    movement: standing
+    requires_interaction: true
+
+  queue_food:
+    title: Queue for Food
+    description: Waiting in line at a food stall.
+    category: street_food
+    movement: waiting
+    requires_interaction: false
+
+  first_bite:
+    title: First Bite
+    description: Taking the first bite of fresh food.
+    category: street_food
+    movement: standing
+    requires_interaction: false
+
+  check_map:
+    title: Check Map
+    description: Looking at Google Maps.
+    category: sightseeing
+    movement: walking
+    requires_interaction: false
+
+  board_plane:
+    title: Boarding
+    description: Walking through the boarding gate.
+    category: airport
+    movement: walking
+    requires_interaction: true

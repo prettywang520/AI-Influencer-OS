@@ -1,0 +1,27 @@
+# Python
+.venv/
+**/__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Browser session / private login data
+browser_profile/
+**/browser_profile/
+**/Cache/
+**/GPUCache/
+**/Code Cache/
+**/Cookies
+**/Cookies-journal
+**/History
+**/History-journal
+**/Login Data
+**/Login Data-journal
+
+# Runtime generated outputs
+10_apps/claude_runtime/output/
+10_apps/claude_runtime/logs/
+output/
+logs/

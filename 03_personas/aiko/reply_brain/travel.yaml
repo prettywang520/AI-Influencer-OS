@@ -1,0 +1,117 @@
+version: 2.0
+
+category: travel
+
+description: >
+  Replies related to travel, destinations, trips,
+  adventures and travel lifestyle.
+
+reply_style:
+
+  lowercase: true
+
+  emoji_level: light
+
+  japanese_probability: 0.2
+
+  follow_up_probability: 0.35
+
+anti_repeat_days: 60
+
+triggers:
+
+  exact:
+    - travel
+    - trip
+    - vacation
+    - holiday
+    - journey
+
+  contains:
+    - japan
+    - tokyo
+    - kyoto
+    - osaka
+    - travel
+    - adventure
+    - asia
+
+emoji_pool:
+
+  - ✈️
+  - 🌸
+  - 🗺️
+  - 🤍
+  - ☀️
+  - 🌿
+  - 🧳
+
+reply_groups:
+
+  dreaming:
+
+    - id: T001
+      text: "one trip is never enough ✈️🤍"
+
+    - id: T002
+      text: "there are still so many places waiting to be explored 🌸"
+
+    - id: T003
+      text: "my bucket list keeps getting longer 🥹"
+
+    - id: T004
+      text: "i'm always dreaming about the next adventure ✨"
+
+    - id: T005
+      text: "the world is too beautiful to stay in one place 🤍"
+
+  slow_travel:
+
+    - id: T021
+      text: "slow mornings always become my favorite memories ☀️"
+
+    - id: T022
+      text: "i love discovering places without rushing 🌿"
+
+    - id: T023
+      text: "getting lost sometimes leads to the best moments 🤍"
+
+    - id: T024
+      text: "travel isn't about checking boxes, it's about collecting memories ✨"
+
+  japan:
+
+    - id: T041
+      text: "japan always feels like home to me 🌸"
+
+    - id: T042
+      text: "every season in japan has its own magic 🤍"
+
+    - id: T043
+      text: "i never get tired of coming back 🥹"
+
+    - id: T044
+      text: "there's always another hidden street waiting to be discovered ✨"
+
+  encouragement:
+
+    - id: T061
+      text: "i hope you get to visit one day 🤍"
+
+    - id: T062
+      text: "you'll absolutely love it 🌸"
+
+    - id: T063
+      text: "saving this place for your next trip might be a good idea ✈️"
+
+follow_up:
+
+  - "where are you traveling next? ✈️"
+
+  - "which city is your favorite? 🤍"
+
+  - "have you been to japan before? 🌸"
+
+  - "what's on your bucket list? 🗺️"
+
+  - "which country should i visit next? ✨"

@@ -1,0 +1,919 @@
+version: "1.0"
+database: story_templates
+status: production
+
+global_rules:
+  feed_count: 1
+  story_count: 4
+  reel_scene_count: 5
+  behavior_first: true
+  interaction_required: true
+  minimum_daily_details: 3
+
+themes:
+
+  bookstore:
+    title: Bookstore Discovery
+    feed_stage: discovery
+
+    stories:
+      - arrival
+      - ask_staff
+      - quiet_creation
+      - checkout
+
+    reels:
+      - arrival
+      - ask_staff
+      - discovery
+      - quiet_creation
+      - checkout
+
+    stages:
+
+      arrival:
+        purpose: Introduce the location through a real arrival problem.
+        behavior_tags:
+          - manage_umbrella
+          - store_belongings
+          - check_directory
+        emotion_tags:
+          - relieved
+          - curious
+        interaction_tags:
+          - customer_holds_door
+          - staff_greeting
+        camera_tags:
+          - entrance_low_angle
+          - glass_reflection
+          - follow_from_behind
+        detail_tags:
+          - umbrella
+          - wet_floor
+          - camera_strap
+          - entrance_sign
+
+      ask_staff:
+        purpose: Give Aiko a reason to interact with bookstore staff.
+        behavior_tags:
+          - show_phone_reference
+          - ask_for_recommendation
+          - follow_store_map
+        emotion_tags:
+          - curious
+          - focused
+        interaction_tags:
+          - staff_points_direction
+          - staff_marks_map
+          - staff_recommends_section
+        camera_tags:
+          - staff_over_shoulder
+          - counter_documentary
+          - side_observation
+        detail_tags:
+          - phone
+          - store_map
+          - floor_directory
+          - handbag
+
+      discovery:
+        purpose: Create the strongest visual and emotional hero moment.
+        behavior_tags:
+          - compare_books
+          - open_large_book
+          - examine_photograph
+          - read_book_description
+        emotion_tags:
+          - inspired
+          - fascinated
+          - surprised
+        interaction_tags:
+          - staff_recommends_book
+          - customer_shares_opinion
+        camera_tags:
+          - hidden_shelf
+          - book_foreground
+          - close_side_profile
+        detail_tags:
+          - hardcover_book
+          - bookmark
+          - wooden_shelf
+          - camera_strap
+          - rain_window
+
+      quiet_creation:
+        purpose: Convert the experience into a personal travel action.
+        behavior_tags:
+          - write_travel_ideas
+          - sketch_route
+          - organise_notes
+        emotion_tags:
+          - thoughtful
+          - peaceful
+          - inspired
+        interaction_tags:
+          - barista_refills_water
+          - staff_clears_table
+        camera_tags:
+          - top_down_table
+          - window_side_frame
+          - hand_detail
+        detail_tags:
+          - journal
+          - fountain_pen
+          - open_book
+          - water_glass
+          - window_rain
+
+      checkout:
+        purpose: End with a clear transaction and departure.
+        behavior_tags:
+          - pay_for_book
+          - receive_wrapped_purchase
+          - check_receipt
+        emotion_tags:
+          - satisfied
+          - grateful
+        interaction_tags:
+          - cashier_wraps_item
+          - cashier_hands_purchase
+        camera_tags:
+          - over_counter
+          - hands_exchange_closeup
+          - cashier_point_of_view
+        detail_tags:
+          - receipt
+          - credit_card
+          - shopping_bag
+          - wrapped_book
+
+  coffee_shop:
+    title: Local Café Ritual
+    feed_stage: signature_experience
+
+    stories:
+      - arrival
+      - order
+      - waiting
+      - leaving
+
+    reels:
+      - arrival
+      - order
+      - waiting
+      - signature_experience
+      - leaving
+
+    stages:
+
+      arrival:
+        purpose: Enter the café through a natural situation.
+        behavior_tags:
+          - remove_sunglasses
+          - close_umbrella
+          - check_cafe_menu
+        emotion_tags:
+          - curious
+          - relieved
+        interaction_tags:
+          - staff_opens_door
+          - friend_points_to_table
+        camera_tags:
+          - doorway_follow
+          - street_to_interior
+        detail_tags:
+          - sunglasses
+          - handbag
+          - menu_board
+          - door_reflection
+
+      order:
+        purpose: Show a meaningful conversation about the drink.
+        behavior_tags:
+          - ask_about_signature_drink
+          - choose_between_drinks
+          - place_order
+        emotion_tags:
+          - curious
+          - decisive
+        interaction_tags:
+          - barista_explains_drink
+          - barista_shows_ingredients
+        camera_tags:
+          - counter_over_shoulder
+          - menu_point_of_view
+        detail_tags:
+          - menu
+          - wallet
+          - order_number
+          - coffee_equipment
+
+      waiting:
+        purpose: Capture real waiting rather than posing.
+        behavior_tags:
+          - watch_barista_prepare_drink
+          - organise_camera
+          - reply_to_message
+        emotion_tags:
+          - patient
+          - focused
+        interaction_tags:
+          - barista_calls_order
+          - nearby_customer_moves_chair
+        camera_tags:
+          - barista_point_of_view
+          - reflection_waiting
+        detail_tags:
+          - phone
+          - camera
+          - order_ticket
+          - steam
+
+      signature_experience:
+        purpose: Deliver the emotional hero moment.
+        behavior_tags:
+          - receive_drink
+          - smell_drink
+          - take_first_sip
+          - compare_flavour_notes
+        emotion_tags:
+          - pleasantly_surprised
+          - satisfied
+          - comforted
+        interaction_tags:
+          - barista_presents_drink
+          - friend_tastes_second_drink
+        camera_tags:
+          - cup_foreground
+          - candid_side_table
+          - barista_view
+        detail_tags:
+          - ceramic_cup
+          - steam
+          - napkin
+          - camera_strap
+          - window_light
+
+      leaving:
+        purpose: Close the visit naturally.
+        behavior_tags:
+          - return_tray
+          - pack_camera
+          - open_door_to_leave
+        emotion_tags:
+          - refreshed
+          - content
+        interaction_tags:
+          - wave_to_barista
+          - staff_thanks_guest
+        camera_tags:
+          - back_exit_shot
+          - reflection_departure
+        detail_tags:
+          - empty_cup
+          - receipt
+          - shoulder_bag
+          - street_view
+
+  night_market:
+    title: Night Market Food Journey
+    feed_stage: first_bite
+
+    stories:
+      - arrival
+      - order
+      - receive_food
+      - leaving
+
+    reels:
+      - arrival
+      - queue
+      - order
+      - first_bite
+      - leaving
+
+    stages:
+
+      arrival:
+        purpose: Establish the crowded market through navigation.
+        behavior_tags:
+          - check_stall_list
+          - follow_food_smell
+          - point_to_sign
+        emotion_tags:
+          - excited
+          - curious
+        interaction_tags:
+          - friend_points_to_stall
+          - local_gives_direction
+        camera_tags:
+          - crowd_follow
+          - lantern_back_view
+        detail_tags:
+          - phone
+          - paper_map
+          - lanterns
+          - shoulder_bag
+
+      queue:
+        purpose: Show Aiko waiting and observing the preparation.
+        behavior_tags:
+          - read_stall_menu
+          - prepare_cash
+          - watch_vendor_cook
+        emotion_tags:
+          - eager
+          - focused
+        interaction_tags:
+          - vendor_explains_wait_time
+          - customer_recommends_item
+        camera_tags:
+          - queue_side_documentary
+          - vendor_point_of_view
+        detail_tags:
+          - cash
+          - menu_board
+          - cooking_steam
+          - paper_tissues
+
+      order:
+        purpose: Make the food choice through conversation.
+        behavior_tags:
+          - point_to_menu_item
+          - ask_spice_level
+          - count_coins
+        emotion_tags:
+          - decisive
+          - slightly_nervous
+        interaction_tags:
+          - vendor_explains_flavour
+          - vendor_confirms_order
+        camera_tags:
+          - counter_exchange
+          - menu_over_shoulder
+        detail_tags:
+          - wallet
+          - coins
+          - wooden_skewers
+          - order_token
+
+      receive_food:
+        purpose: Show the handover and fresh-food details.
+        behavior_tags:
+          - receive_hot_food
+          - add_condiment
+          - take_napkin
+        emotion_tags:
+          - excited
+          - appreciative
+        interaction_tags:
+          - vendor_hands_food
+          - vendor_warns_food_is_hot
+        camera_tags:
+          - hands_exchange
+          - food_foreground
+        detail_tags:
+          - steam
+          - paper_bag
+          - napkin
+          - bamboo_skewer
+
+      first_bite:
+        purpose: Deliver the strongest authentic food reaction.
+        behavior_tags:
+          - cool_hot_food
+          - take_first_bite
+          - react_to_flavour
+        emotion_tags:
+          - surprised
+          - delighted
+          - satisfied
+        interaction_tags:
+          - friend_watches_reaction
+          - vendor_notices_reaction
+        camera_tags:
+          - friend_candid_closeup
+          - food_level_side
+        detail_tags:
+          - bamboo_skewer
+          - steam
+          - tissue
+          - market_lights
+
+      leaving:
+        purpose: Close the market journey without another eating pose.
+        behavior_tags:
+          - separate_recycling
+          - pack_leftover_food
+          - check_next_train
+        emotion_tags:
+          - content
+          - pleasantly_tired
+        interaction_tags:
+          - vendor_waves_goodbye
+          - friend_shares_shopping_bag
+        camera_tags:
+          - walking_away_backshot
+          - high_angle_market_exit
+        detail_tags:
+          - paper_bag
+          - phone
+          - receipt
+          - lantern_street
+
+  luxury_hotel:
+    title: Luxury Hotel Stay
+    feed_stage: room_discovery
+
+    stories:
+      - arrival
+      - check_in
+      - quiet_ritual
+      - evening_transition
+
+    reels:
+      - arrival
+      - check_in
+      - room_discovery
+      - quiet_ritual
+      - evening_transition
+
+    stages:
+
+      arrival:
+        purpose: Show an active hotel arrival.
+        behavior_tags:
+          - exit_taxi
+          - retrieve_luggage
+          - check_booking_phone
+        emotion_tags:
+          - anticipatory
+          - relieved
+        interaction_tags:
+          - doorman_opens_door
+          - driver_hands_luggage
+        camera_tags:
+          - taxi_point_of_view
+          - lobby_follow
+        detail_tags:
+          - suitcase
+          - phone
+          - handbag
+          - hotel_entrance
+
+      check_in:
+        purpose: Create a genuine reception interaction.
+        behavior_tags:
+          - present_passport
+          - sign_registration
+          - receive_room_key
+        emotion_tags:
+          - focused
+          - welcomed
+        interaction_tags:
+          - receptionist_explains_facilities
+          - staff_hands_key_card
+        camera_tags:
+          - reception_over_counter
+          - receptionist_point_of_view
+        detail_tags:
+          - passport
+          - key_card
+          - registration_form
+          - luggage
+
+      room_discovery:
+        purpose: Show room discovery through action.
+        behavior_tags:
+          - open_room_door
+          - draw_curtains
+          - inspect_welcome_note
+        emotion_tags:
+          - surprised
+          - impressed
+        interaction_tags:
+          - staff_explains_room
+          - bell_staff_places_luggage
+        camera_tags:
+          - doorway_reveal
+          - window_reflection
+          - staff_follow
+        detail_tags:
+          - room_key
+          - welcome_note
+          - suitcase
+          - skyline_window
+
+      quiet_ritual:
+        purpose: Show relaxation as a real activity.
+        behavior_tags:
+          - unpack_camera
+          - prepare_tea
+          - organise_evening_notes
+        emotion_tags:
+          - peaceful
+          - restored
+        interaction_tags:
+          - room_service_delivers_tea
+          - staff_places_refreshments
+        camera_tags:
+          - top_down_room_table
+          - side_window_candid
+        detail_tags:
+          - tea_tray
+          - journal
+          - camera
+          - slippers
+
+      evening_transition:
+        purpose: End with preparation for the evening.
+        behavior_tags:
+          - check_dinner_reservation
+          - put_on_jewellery
+          - collect_room_key
+        emotion_tags:
+          - refreshed
+          - excited
+        interaction_tags:
+          - concierge_confirms_booking
+          - friend_waits_at_door
+        camera_tags:
+          - mirror_detail
+          - hallway_follow
+        detail_tags:
+          - phone
+          - earrings
+          - handbag
+          - room_key
+
+  airport:
+    title: Airport Departure
+    feed_stage: boarding
+
+    stories:
+      - arrival
+      - check_in
+      - gate_wait
+      - boarding
+
+    reels:
+      - arrival
+      - check_in
+      - security_preparation
+      - gate_wait
+      - boarding
+
+    stages:
+
+      arrival:
+        purpose: Establish a real airport departure task.
+        behavior_tags:
+          - unload_suitcase
+          - check_terminal
+          - organise_documents
+        emotion_tags:
+          - focused
+          - excited
+        interaction_tags:
+          - driver_hands_suitcase
+          - airport_staff_gives_direction
+        camera_tags:
+          - curbside_follow
+          - luggage_low_angle
+        detail_tags:
+          - suitcase
+          - passport
+          - phone
+          - terminal_sign
+
+      check_in:
+        purpose: Show the airline process.
+        behavior_tags:
+          - scan_passport
+          - place_bag_on_scale
+          - receive_boarding_pass
+        emotion_tags:
+          - attentive
+          - relieved
+        interaction_tags:
+          - airline_staff_checks_documents
+          - staff_attaches_bag_tag
+        camera_tags:
+          - desk_over_shoulder
+          - baggage_scale_closeup
+        detail_tags:
+          - passport
+          - boarding_pass
+          - luggage_tag
+          - suitcase
+
+      security_preparation:
+        purpose: Show preparation without exposing restricted procedures.
+        behavior_tags:
+          - remove_jacket
+          - place_items_in_tray
+          - organise_small_belongings
+        emotion_tags:
+          - focused
+          - calm
+        interaction_tags:
+          - staff_points_to_tray
+          - traveller_returns_item
+        camera_tags:
+          - tray_top_down
+          - side_documentary
+        detail_tags:
+          - tray
+          - camera
+          - jacket
+          - watch
+
+      gate_wait:
+        purpose: Use waiting time as a real travel activity.
+        behavior_tags:
+          - charge_phone
+          - review_itinerary
+          - refill_water_bottle
+        emotion_tags:
+          - thoughtful
+          - patient
+        interaction_tags:
+          - gate_agent_updates_passenger
+          - traveller_asks_about_seat
+        camera_tags:
+          - window_silhouette
+          - seat_row_observation
+        detail_tags:
+          - boarding_pass
+          - phone_charger
+          - water_bottle
+          - departure_screen
+
+      boarding:
+        purpose: End with forward movement into the aircraft.
+        behavior_tags:
+          - scan_boarding_pass
+          - adjust_carry_on
+          - enter_jet_bridge
+        emotion_tags:
+          - excited
+          - anticipatory
+        interaction_tags:
+          - gate_agent_scans_pass
+          - crew_greets_passenger
+        camera_tags:
+          - jet_bridge_follow
+          - gate_agent_point_of_view
+        detail_tags:
+          - boarding_pass
+          - passport
+          - carry_on
+          - gate_sign
+
+  shopping:
+    title: Thoughtful Shopping Experience
+    feed_stage: product_discovery
+
+    stories:
+      - arrival
+      - compare
+      - consultation
+      - purchase
+
+    reels:
+      - arrival
+      - compare
+      - product_discovery
+      - consultation
+      - purchase
+
+    stages:
+
+      arrival:
+        purpose: Enter with a real shopping objective.
+        behavior_tags:
+          - check_saved_product
+          - take_shopping_list
+          - store_umbrella
+        emotion_tags:
+          - focused
+          - curious
+        interaction_tags:
+          - staff_greets_customer
+          - friend_points_to_department
+        camera_tags:
+          - escalator_follow
+          - entrance_reflection
+        detail_tags:
+          - phone
+          - handbag
+          - shopping_list
+          - directory
+
+      compare:
+        purpose: Show decision-making.
+        behavior_tags:
+          - compare_two_products
+          - read_product_label
+          - inspect_material
+        emotion_tags:
+          - curious
+          - uncertain
+        interaction_tags:
+          - friend_shares_opinion
+          - staff_places_options
+        camera_tags:
+          - mirror_reflection
+          - shoulder_comparison
+        detail_tags:
+          - product_boxes
+          - price_tags
+          - shopping_basket
+          - handbag
+
+      product_discovery:
+        purpose: Deliver the hero product experience.
+        behavior_tags:
+          - test_fragrance
+          - try_accessory
+          - examine_handmade_item
+        emotion_tags:
+          - pleasantly_surprised
+          - fascinated
+        interaction_tags:
+          - advisor_demonstrates_product
+          - maker_explains_craft
+        camera_tags:
+          - advisor_point_of_view
+          - product_foreground
+        detail_tags:
+          - testing_strip
+          - mirror
+          - product_tray
+          - jewellery
+
+      consultation:
+        purpose: Make recommendation part of the story.
+        behavior_tags:
+          - ask_product_question
+          - compare_recommendations
+          - check_product_notes
+        emotion_tags:
+          - attentive
+          - thoughtful
+        interaction_tags:
+          - advisor_explains_difference
+          - staff_recommends_option
+        camera_tags:
+          - counter_side
+          - advisor_over_shoulder
+        detail_tags:
+          - product_card
+          - phone
+          - basket
+          - sample
+
+      purchase:
+        purpose: Close with a transaction.
+        behavior_tags:
+          - pay_by_card
+          - receive_packaged_item
+          - place_receipt_in_wallet
+        emotion_tags:
+          - satisfied
+          - pleased
+        interaction_tags:
+          - cashier_hands_bag
+          - staff_wraps_product
+        camera_tags:
+          - over_counter
+          - hands_exchange_closeup
+        detail_tags:
+          - credit_card
+          - receipt
+          - paper_bag
+          - wrapped_product
+
+  sightseeing:
+    title: Sightseeing
+
+    feed_stage: hero_moment
+
+    stories:
+      - arrival
+      - discovery
+      - experience
+      - leaving
+
+    reels:
+      - arrival
+      - discovery
+      - experience
+      - quiet_moment
+      - leaving
+
+    stages:
+
+      hero_moment:
+        purpose: Hero sightseeing moment
+        behavior_tags:
+          - photograph_architecture
+        emotion_tags:
+          - curious
+          - inspired
+        interaction_tags:
+          - friend_points
+          - local_gives_directions
+        camera_tags:
+          - friend_close_candid
+          - walking_follow_wide
+          - side_reaction_shot
+        detail_tags:
+          - camera strap
+          - phone
+          - handbag
+
+      arrival:
+        purpose: Arrival
+        behavior_tags:
+          - check_map
+          - scan_surroundings
+        emotion_tags:
+          - curious
+        interaction_tags:
+          - friend_points
+        camera_tags:
+          - walking_follow_wide
+          - friend_close_candid
+        detail_tags:
+          - phone
+          - camera strap
+          - hair moving naturally
+
+      discovery:
+        purpose: Discovery
+        behavior_tags:
+          - ask_for_directions
+          - photograph_architecture
+        emotion_tags:
+          - inspired
+        interaction_tags:
+          - local_gives_directions
+        camera_tags:
+          - side_reaction_shot
+          - over_shoulder
+        detail_tags:
+          - map
+          - handbag
+          - passing pedestrians
+
+      experience:
+        purpose: Experience
+        behavior_tags:
+          - examine_details
+          - take_photo
+        emotion_tags:
+          - focused
+        interaction_tags:
+          - friend_comments
+        camera_tags:
+          - seated_phone_snapshot
+          - friend_close_candid
+        detail_tags:
+          - camera
+          - sunlight
+          - clothing movement
+
+      quiet_moment:
+        purpose: Quiet moment
+        behavior_tags:
+          - review_photos
+          - pause_by_window
+        emotion_tags:
+          - content
+        interaction_tags:
+          - friend_waits_nearby
+        camera_tags:
+          - top_down_table_moment
+          - over_shoulder
+        detail_tags:
+          - phone
+          - camera strap
+          - soft shadows
+
+      leaving:
+        purpose: Leaving
+        behavior_tags:
+          - pack_camera
+          - walk_to_next_stop
+        emotion_tags:
+          - satisfied
+        interaction_tags:
+          - thank_local
+        camera_tags:
+          - walking_follow_wide
+          - back_shot
+        detail_tags:
+          - bag swinging
+          - hair moving
+          - street background

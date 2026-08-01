@@ -1,0 +1,203 @@
+version: "2.0"
+library: spam
+status: production
+character: aiko_sato
+
+description: >
+  Detection and action rules for spam, scams, unsolicited promotion,
+  impersonation, bot comments and unsafe links. Spam should not receive
+  conversational replies.
+
+default_action: ignore
+
+categories:
+
+  crypto:
+    action: ignore_and_flag
+    keywords:
+      - crypto
+      - bitcoin
+      - ethereum
+      - forex
+      - nft
+      - mining
+      - trading signals
+      - investment opportunity
+      - guaranteed profit
+      - financial freedom
+      - passive income
+
+  fake_promotion:
+    action: ignore
+    keywords:
+      - promote it on
+      - send pic
+      - dm for promotion
+      - paid promotion
+      - promote your page
+      - feature your account
+      - grow your followers
+      - boost engagement
+      - guaranteed followers
+      - social media growth
+
+  follow_exchange:
+    action: ignore
+    keywords:
+      - follow for follow
+      - f4f
+      - like for like
+      - l4l
+      - follow back
+      - check my profile
+      - support my page
+      - return the follow
+
+  suspicious_contact:
+    action: ignore_and_flag
+    keywords:
+      - contact my manager
+      - message me on telegram
+      - message me on whatsapp
+      - text this number
+      - click the link
+      - claim your prize
+      - you've won
+      - account verification
+      - verify your account
+      - copyright warning
+
+  impersonation:
+    action: flag_and_escalate
+    keywords:
+      - official support
+      - instagram support
+      - meta support
+      - account recovery
+      - blue tick service
+      - verification service
+      - restore account
+      - appeal suspension
+
+  adult_spam:
+    action: ignore_block_and_flag
+    keywords:
+      - explicit content
+      - private photos
+      - adult page
+      - onlyfans promo
+      - sex chat
+      - hookup
+      - nude
+      - sugar daddy
+      - sugar baby
+
+  malware:
+    action: ignore_block_and_flag
+    keywords:
+      - download this file
+      - install this app
+      - open attachment
+      - login here
+      - password reset link
+      - free gift card
+      - free iphone
+      - suspicious shortened url
+
+  repetitive_bot:
+    action: ignore
+    detection:
+      identical_comment_threshold: 3
+      repeated_emoji_threshold: 12
+      repeated_comment_across_posts: true
+      unrelated_generic_comment: true
+
+  mass_tagging:
+    action: ignore
+    detection:
+      tagged_accounts_threshold: 8
+      no_relevant_text: true
+
+allowlist_exceptions:
+  - "verified brand enquiry with relevant campaign details"
+  - "real photographer credit request"
+  - "legitimate press or media enquiry"
+  - "existing partner communicating through an approved account"
+
+brand_enquiry_redirect:
+  conditions:
+    - relevant company name
+    - clear campaign description
+    - identifiable business email
+    - no suspicious link
+  action: route_to_brand_collaboration_agent
+
+scoring:
+  weights:
+    suspicious_link: 5
+    guaranteed_income: 5
+    account_password_request: 10
+    external_messaging_request: 3
+    repeated_generic_comment: 2
+    unrelated_promotion: 3
+    excessive_tags: 2
+    explicit_content: 8
+    impersonation_language: 8
+
+  thresholds:
+    ignore: 3
+    flag: 6
+    block: 9
+    escalate: 10
+
+url_rules:
+  - "never open links from unsolicited comments"
+  - "never request login credentials"
+  - "never move suspicious conversations to telegram or whatsapp"
+  - "never download files from unknown accounts"
+  - "never provide payment information through comments or dms"
+  - "route legitimate business requests through the official business email"
+
+reply_policy:
+  reply_to_spam: false
+
+  prohibited_replies:
+    - "no thank you"
+    - "please stop"
+    - "not interested"
+    - "is this real"
+    - "send more information"
+
+moderation_actions:
+  ignore:
+    description: Take no conversational action.
+
+  hide:
+    description: Hide irrelevant commercial comments when supported.
+
+  flag:
+    description: Mark the account or comment for manual review.
+
+  block:
+    description: Block persistent or unsafe accounts.
+
+  escalate:
+    description: >
+      Escalate credible threats, impersonation, account-security attacks
+      or organised harassment for manual handling.
+
+logging:
+  enabled: true
+  store:
+    - timestamp
+    - account_identifier
+    - matched_category
+    - matched_keyword
+    - spam_score
+    - selected_action
+
+  do_not_store:
+    - passwords
+    - payment details
+    - private identification numbers
+    - full suspicious message content when unnecessary

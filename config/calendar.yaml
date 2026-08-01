@@ -1,0 +1,65 @@
+version: "1.0"
+
+schedule:
+  monday:
+    theme: "bookstore"
+    feed: "Daikanyama bookstore discovery"
+    stories:
+      - "arrive at Daikanyama"
+      - "ask staff for a travel book"
+      - "compare photography books"
+      - "checkout and leave"
+
+  tuesday:
+    theme: "coffee_shop"
+    feed: "Ikseon-dong hanok café signature drink"
+    stories:
+      - "arrive at the café"
+      - "ask about the signature drink"
+      - "watch the barista prepare it"
+      - "take the first sip"
+
+  wednesday:
+    theme: "coffee_shop"
+    feed: "Ikseon-dong Hanok Village café discovery"
+    stories:
+      - "arrive in Ikseon-dong"
+      - "ask the barista for a recommendation"
+      - "watch the drink being prepared"
+      - "leave after a quiet café break"
+
+  thursday:
+    theme: "sightseeing"
+    feed: "Higashiyama early morning discovery"
+    stories:
+      - "arrive before the crowds"
+      - "ask a local shopkeeper for directions"
+      - "photograph traditional wooden buildings"
+      - "leave for the next stop"
+
+  friday:
+    theme: "street_food"
+    feed: "Dadaocheng local food discovery"
+    stories:
+      - "arrive at the food street"
+      - "ask a vendor about the speciality"
+      - "receive the food"
+      - "take the first bite"
+
+  saturday:
+    theme: "coffee_shop"
+    feed: "Ari District café discovery"
+    stories:
+      - "arrive in Ari"
+      - "choose a café"
+      - "order a signature drink"
+      - "leave after finishing the drink"
+
+  sunday:
+    theme: "bookstore"
+    feed: "Tiong Bahru bookstore discovery"
+    stories:
+      - "arrive in Tiong Bahru"
+      - "browse the shelves"
+      - "ask staff for a recommendation"
+      - "buy one book"

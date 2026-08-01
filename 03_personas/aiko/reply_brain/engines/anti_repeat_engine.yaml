@@ -1,0 +1,577 @@
+version: "1.0"
+engine: anti_repeat_engine
+status: production
+character: aiko_sato
+
+description: >
+  Prevents repetitive, robotic or overly predictable replies by tracking
+  reply text, openings, structures, emoji combinations, Japanese phrases,
+  follow-up questions and topic-specific patterns.
+
+objectives:
+  - prevent exact duplicate replies
+  - reduce repeated sentence structures
+  - rotate openings, emotions, emoji and follow-up questions
+  - preserve natural consistency without sounding random
+  - avoid repeating replies to the same follower
+  - maintain a usable history for future reply selection
+
+input:
+  required:
+    - candidate_reply
+    - reply_id
+    - selected_library
+    - follower_identifier
+    - timestamp
+
+  optional:
+    - reply_group
+    - opening_phrase
+    - closing_phrase
+    - emoji_combination
+    - japanese_phrase
+    - follow_up_question
+    - detected_emotion
+    - primary_intent
+    - post_topic
+    - current_content_identifier
+    - recent_global_history
+    - follower_reply_history
+
+output:
+  required:
+    - approved
+    - repeat_score
+    - rejection_reasons
+
+  optional:
+    - replacement_strategy
+    - blocked_components
+    - suggested_library
+    - suggested_reply_group
+    - next_available_date
+
+history_storage:
+
+  global_history:
+    retention_days: 180
+    fields:
+      - timestamp
+      - reply_id
+      - normalised_text_hash
+      - selected_library
+      - reply_group
+      - opening_phrase
+      - sentence_pattern
+      - emoji_combination
+      - japanese_phrase
+      - follow_up_question
+      - detected_emotion
+      - primary_intent
+      - post_topic
+      - follower_hash
+      - content_identifier
+
+  follower_history:
+    retention_days: 365
+    fields:
+      - follower_hash
+      - timestamp
+      - reply_id
+      - normalised_text_hash
+      - reply_group
+      - follow_up_question
+      - nickname_used
+      - japanese_phrase
+      - boundary_status
+
+  privacy:
+    rules:
+      - "store a hashed follower identifier where possible"
+      - "do not store message passwords, payment data or private identification"
+      - "store only data required for repetition control"
+      - "honour deletion and retention policies"
+
+normalisation:
+
+  lowercase: true
+  trim_whitespace: true
+  collapse_repeated_spaces: true
+  normalise_apostrophes: true
+  remove_terminal_punctuation_for_hash: true
+  preserve_emoji: true
+  preserve_japanese: true
+
+  variable_replacement:
+    enabled: true
+    replace:
+      - "{follower_name}"
+      - "{location}"
+      - "{city}"
+      - "{country}"
+      - "{hotel_name}"
+      - "{product_name}"
+      - "{brand_name}"
+      - "{camera_model}"
+
+    purpose: >
+      Detect structurally identical replies even when only a name,
+      location or product variable changes.
+
+repeat_windows:
+
+  exact_reply:
+    global_days: 60
+    same_follower_days: 120
+    same_post_days: 365
+
+  reply_id:
+    global_days: 30
+    same_follower_days: 90
+
+  opening_phrase:
+    global_days: 7
+    same_follower_days: 30
+
+  sentence_pattern:
+    global_days: 14
+    same_follower_days: 45
+
+  emoji_combination:
+    global_days: 7
+    same_follower_days: 30
+
+  japanese_phrase:
+    global_days: 30
+    same_follower_days: 60
+
+  follow_up_question:
+    global_days: 14
+    same_follower_days: 45
+
+  nickname:
+    same_follower_days: 30
+
+similarity_thresholds:
+
+  exact_match:
+    score: 1.00
+    action: reject
+
+  near_duplicate:
+    minimum_score: 0.88
+    action: reject
+
+  high_similarity:
+    minimum_score: 0.75
+    action: rewrite
+
+  moderate_similarity:
+    minimum_score: 0.60
+    action: penalise
+
+  acceptable:
+    below_score: 0.60
+    action: approve
+
+similarity_components:
+
+  text_similarity:
+    weight: 0.40
+
+  opening_similarity:
+    weight: 0.15
+
+  structure_similarity:
+    weight: 0.15
+
+  emoji_similarity:
+    weight: 0.10
+
+  follow_up_similarity:
+    weight: 0.10
+
+  japanese_similarity:
+    weight: 0.10
+
+frequency_limits:
+
+  openings:
+    "thank you":
+      maximum_last_20_replies: 3
+
+    "aww":
+      maximum_last_20_replies: 3
+
+    "hehe":
+      maximum_last_20_replies: 2
+
+    "you're so sweet":
+      maximum_last_30_replies: 2
+
+    "i'm so happy":
+      maximum_last_20_replies: 2
+
+    "this is":
+      maximum_last_20_replies: 4
+
+  emojis:
+    "🤍":
+      maximum_last_10_replies: 5
+
+    "✨":
+      maximum_last_10_replies: 4
+
+    "🥹":
+      maximum_last_10_replies: 3
+
+    "🌸":
+      maximum_last_10_replies: 3
+
+    "🤭":
+      maximum_last_10_replies: 2
+
+  japanese:
+    maximum_last_10_replies: 3
+    maximum_standalone_last_10: 1
+
+  follow_up_questions:
+    maximum_last_10_replies: 4
+    same_question_maximum_last_30: 1
+
+  nicknames:
+    babe:
+      maximum_last_20_replies: 2
+
+    handsome:
+      maximum_last_20_replies: 2
+
+    sweetie:
+      maximum_last_20_replies: 3
+
+pattern_detection:
+
+  sentence_patterns:
+    - id: PAT001
+      pattern: "gratitude + emoji"
+      examples:
+        - "thank you so much 🤍"
+        - "aww thank you 🌸"
+
+    - id: PAT002
+      pattern: "reaction + personal impact"
+      examples:
+        - "you made my day"
+        - "you're making me smile"
+
+    - id: PAT003
+      pattern: "context statement + follow-up question"
+      examples:
+        - "it was so peaceful. would you visit?"
+        - "i loved the view. which room would you choose?"
+
+    - id: PAT004
+      pattern: "Japanese phrase + English sentence"
+      examples:
+        - "ありがとう🤍 that means so much."
+        - "また行きたい🥹 i miss it already."
+
+    - id: PAT005
+      pattern: "playful answer + teasing question"
+      examples:
+        - "only if you carry the camera bag 🤭"
+        - "passport ready? 😆"
+
+  rules:
+    - "do not use the same pattern more than twice consecutively"
+    - "rotate between statement, reaction, context and question structures"
+    - "avoid changing only emoji while keeping identical wording"
+
+rotation_rules:
+
+  library_rotation:
+    enabled: true
+
+    rules:
+      - "use the most context-specific library first"
+      - "do not route every positive comment to compliments"
+      - "use engagement only when continuing conversation is natural"
+      - "rotate compatible reply groups within the same library"
+
+  emotion_rotation:
+    rules:
+      - "do not assign playful emotion to every positive comment"
+      - "rotate grateful, warm, happy, shy and thoughtful where context allows"
+      - "emotion matching remains more important than variation"
+
+  opening_rotation:
+    pools:
+      gratitude:
+        - "aww"
+        - "that means so much"
+        - "you're so kind"
+        - "you made me smile"
+        - "so happy you liked it"
+        - "ありがとう"
+
+      playful:
+        - "hehe"
+        - "okay"
+        - "careful"
+        - "now you're"
+        - "only if"
+
+      helpful:
+        - "this is"
+        - "i used"
+        - "the place is"
+        - "i chose"
+        - "i'll check"
+
+      reflective:
+        - "sometimes"
+        - "i still remember"
+        - "this moment"
+        - "there was something"
+        - "it felt"
+
+  closing_rotation:
+    pools:
+      warm:
+        - "🤍"
+        - "🌸"
+        - "that means a lot."
+        - "i'm glad you're here."
+
+      engagement:
+        - "what would you choose?"
+        - "have you been there?"
+        - "where should i go next?"
+        - "would you try it?"
+        - "what's your favourite?"
+
+replacement_strategies:
+
+  exact_duplicate:
+    actions:
+      - select_different_reply_id
+      - select_different_reply_group
+      - remove_optional_japanese
+      - change_opening_structure
+      - change_emotion_within_allowed_range
+      - regenerate_from_context
+
+  repeated_opening:
+    actions:
+      - remove_opening
+      - begin_with_context
+      - begin_with_emotional_reaction
+      - begin_with_japanese_phrase_if_allowed
+
+  repeated_emoji:
+    actions:
+      - select_new_combination
+      - reduce_emoji_count
+      - use_zero_emoji_when_natural
+
+  repeated_follow_up:
+    actions:
+      - remove_question
+      - select_context_specific_question
+      - use_statement_only
+
+  repeated_japanese:
+    actions:
+      - disable_japanese_injection
+      - select_different_phrase_group
+      - use_english_only
+
+  repeated_structure:
+    actions:
+      - convert_question_to_statement
+      - convert_generic_gratitude_to_context_reply
+      - add_verified_context
+      - shorten_reply
+      - change_clause_order
+
+scoring:
+
+  repeat_score_formula:
+    text_similarity: 0.40
+    opening_similarity: 0.15
+    sentence_pattern_similarity: 0.15
+    emoji_similarity: 0.10
+    follow_up_similarity: 0.10
+    japanese_similarity: 0.10
+
+  penalties:
+    exact_reply_inside_window: 1.00
+    same_reply_id_inside_window: 0.80
+    same_opening_inside_window: 0.25
+    same_pattern_consecutively: 0.25
+    same_emoji_combination_inside_window: 0.20
+    same_follow_up_inside_window: 0.30
+    same_japanese_phrase_inside_window: 0.30
+    nickname_overuse: 0.20
+
+approval_rules:
+
+  approve:
+    conditions:
+      - repeat_score_below: 0.60
+      - no_exact_window_violation: true
+      - no_same_follower_window_violation: true
+      - frequency_limits_passed: true
+
+  rewrite:
+    conditions:
+      - repeat_score_between:
+          minimum: 0.60
+          maximum: 0.87
+
+  reject:
+    conditions:
+      - repeat_score_at_least: 0.88
+
+  force_reject:
+    conditions:
+      - exact_reply_inside_window
+      - exact_reply_to_same_follower_inside_window
+      - same_follow_up_to_same_follower_inside_window
+      - boundary_reply_already_used_and_boundary_ignored
+
+same_follower_rules:
+  - "avoid asking for the same personal detail twice"
+  - "do not reuse the same nickname within 30 days"
+  - "do not restart a resolved conversation"
+  - "do not repeat a location answer already given in the same thread"
+  - "do not repeat flirtatious replies to persistent pressure"
+  - "if a boundary was previously stated, use moderation rather than variation"
+
+thread_rules:
+  - "exact factual information may repeat when necessary for clarity"
+  - "do not sacrifice accuracy merely to avoid repetition"
+  - "inside one thread, prefer short references such as 'yes, that one' rather than restating everything"
+  - "do not ask another engagement question after the follower closes the conversation"
+
+exceptions:
+
+  factual_answer:
+    rule: >
+      Verified names, locations and safety disclosures may repeat when
+      needed, but surrounding wording should vary.
+
+  disclosure:
+    rule: >
+      Legally or contractually required disclosure wording must not be
+      altered merely for variation.
+
+  safety_boundary:
+    rule: >
+      Consistent boundary language may repeat when required for safety.
+
+  language_translation:
+    rule: >
+      Exact translations may repeat because accuracy overrides variation.
+
+logging:
+  enabled: true
+
+  log_fields:
+    - timestamp
+    - candidate_reply_id
+    - approved_reply_id
+    - repeat_score
+    - rejection_reasons
+    - replacement_strategy
+    - selected_library
+    - follower_hash
+    - content_identifier
+
+  metrics:
+    - duplicate_rejection_rate
+    - rewrite_rate
+    - average_repeat_score
+    - most_used_openings
+    - most_used_emojis
+    - most_used_follow_up_questions
+    - library_distribution
+    - same_follower_duplicate_rate
+
+cleanup:
+  schedule: weekly
+
+  actions:
+    - remove_expired_global_history
+    - retain_follower_boundaries
+    - retain_required_disclosure_history
+    - rebuild_frequency_counters
+    - validate_missing_reply_ids
+
+fallback:
+  approved: false
+  repeat_score: 1.00
+  replacement_strategy:
+    - regenerate_from_context
+    - use_statement_only
+    - remove_optional_emoji
+    - remove_optional_japanese
+
+validation:
+  - "candidate reply must have a reply id or generated hash"
+  - "repeat score must be between 0 and 1"
+  - "history windows must use valid timestamps"
+  - "privacy rules must be applied before storage"
+  - "required factual wording must not be altered incorrectly"
+  - "replacement reply must be checked again before approval"
+
+examples:
+
+  - candidate_reply: "aww you're so sweet 🤍"
+    history:
+      same_text_used_days_ago: 5
+      same_follower: false
+
+    result:
+      approved: false
+      repeat_score: 1.00
+      rejection_reasons:
+        - exact_reply_inside_window
+      replacement_strategy:
+        - select_different_reply_id
+
+  - candidate_reply: "you just made my day 🌸"
+    history:
+      similar_reply: "you made my day ✨"
+      similar_reply_days_ago: 3
+
+    result:
+      approved: false
+      repeat_score: 0.82
+      rejection_reasons:
+        - high_text_similarity
+        - repeated_sentence_pattern
+      replacement_strategy:
+        - use_context_specific_reply
+
+  - candidate_reply: "this is Daikanyama T-Site in Tokyo 🇯🇵"
+    history:
+      same_factual_answer_used_in_another_thread: true
+
+    result:
+      approved: true
+      repeat_score: 0.42
+      rejection_reasons: []
+      note: "verified factual answer exception applied"
+
+  - candidate_reply: "ありがとう🤍 your support means so much."
+    history:
+      japanese_replies_in_last_ten: 3
+
+    result:
+      approved: false
+      repeat_score: 0.68
+      rejection_reasons:
+        - japanese_frequency_limit
+      replacement_strategy:
+        - disable_japanese_injection

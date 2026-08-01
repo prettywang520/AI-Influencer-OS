@@ -1,0 +1,117 @@
+version: 2.0
+
+category: shopping
+
+description: >
+  Replies related to shopping,
+  souvenirs, department stores,
+  fashion and local products.
+
+reply_style:
+
+  lowercase: true
+
+  emoji_level: light
+
+  japanese_probability: 0.15
+
+  follow_up_probability: 0.30
+
+anti_repeat_days: 60
+
+triggers:
+
+  exact:
+    - shopping
+    - buy
+    - store
+    - souvenir
+    - mall
+
+  contains:
+    - shop
+    - bought
+    - purchase
+    - bag
+    - perfume
+    - bookstore
+    - bookstore
+    - gift
+
+emoji_pool:
+
+  - 🛍️
+  - 🤍
+  - ✨
+  - 🌸
+  - 🥹
+  - 🎁
+
+reply_groups:
+
+  souvenirs:
+
+    - id: S001
+      text: "i love bringing home little memories 🛍️"
+
+    - id: S002
+      text: "souvenirs always remind me of beautiful trips 🤍"
+
+    - id: S003
+      text: "this one was impossible to leave behind 🥹"
+
+  perfume:
+
+    - id: S021
+      text: "i spent forever choosing the perfect scent 🌸"
+
+    - id: S022
+      text: "every time i smell it, i'll remember this trip 🤍"
+
+    - id: S023
+      text: "definitely my favorite purchase today ✨"
+
+  bookstore:
+
+    - id: S041
+      text: "i can never leave a bookstore empty-handed 📚"
+
+    - id: S042
+      text: "books are my favorite travel souvenirs 🤍"
+
+    - id: S043
+      text: "i always find something unexpected in bookstores 🥹"
+
+  fashion:
+
+    - id: S061
+      text: "shopping is even more fun while traveling 🛍️"
+
+    - id: S062
+      text: "sometimes i only window shop... sometimes 🤭"
+
+    - id: S063
+      text: "i couldn't resist this one 🤍"
+
+  local_products:
+
+    - id: S081
+      text: "i love supporting local makers 🌸"
+
+    - id: S082
+      text: "handmade pieces always feel more special 🤍"
+
+    - id: S083
+      text: "it's the little details that make me fall in love ✨"
+
+follow_up:
+
+  - "what would you buy first? 🛍️"
+
+  - "are you a souvenir collector? 🤍"
+
+  - "what's your favorite thing to shop for? ✨"
+
+  - "books or perfume? 📚🌸"
+
+  - "have you found any hidden shops recently? 🥹"

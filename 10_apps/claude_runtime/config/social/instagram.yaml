@@ -1,0 +1,510 @@
+version: "1.0"
+
+# AIKO OS — Instagram browser session configuration (Phase 8A)
+#
+# This file configures read-only session infrastructure only:
+# opening a persistent visible Chromium profile, waiting for a human
+# to log in manually, and detecting logged_in / logged_out state.
+#
+# It does not configure posting, replying, liking, following,
+# unfollowing, or sending DMs. No credentials are stored here.
+
+instagram:
+  base_url: "https://www.instagram.com/"
+  login_url: "https://www.instagram.com/accounts/login/"
+
+  # Aiko's own public Instagram handle. This is a public username, not
+  # a credential. Comments authored by this username are excluded from
+  # the comment reader queue (Phase 8B). Confirmed against the live,
+  # logged-in account on 2026-07-31.
+  own_username: "aikotraveldiary"
+
+browser:
+  # Visible by default. Use --headless on the CLI to override.
+  headless: false
+  locale: "en-US"
+  timezone_id: "Asia/Tokyo"
+  viewport:
+    width: 1280
+    height: 900
+
+profile:
+  # Persistent Chromium profile directory, relative to the app root
+  # (10_apps/claude_runtime). Session cookies live here after the
+  # first manual login, so future runs do not require logging in again.
+  directory: "browser_profile/instagram"
+
+timeouts:
+  navigation_ms: 30000
+  login_wait_ms: 300000
+  check_ms: 15000
+
+login_detection:
+  # If any of these selectors are found, the session is logged_in.
+  logged_in_selectors:
+    - "svg[aria-label='Home']"
+    - "a[href='/direct/inbox/']"
+    - "nav[aria-label='Primary site navigation']"
+
+  # If any of these selectors are found (and no logged_in selector
+  # matched), the session is logged_out. input[type='password'] is
+  # kept first because it is the most structurally reliable signal
+  # of a login form regardless of Instagram's current field naming.
+  logged_out_selectors:
+    - "input[type='password']"
+    - "input[name='username']"
+    - "input[aria-label*='username' i]"
+    - "button:has-text('Log in')"
+
+  # Strong URL-based signal that always means logged_out, checked first.
+  logged_out_url_markers:
+    - "accounts/login"
+    - "accounts/onetap"
+
+  # URL segments meaning login is in progress but not finished yet
+  # (2FA / verification code / checkpoint / consent screens). These
+  # are neither logged_in nor logged_out, so they are classified as
+  # unknown and trigger a screenshot for a human to review.
+  #
+  # There is intentionally no "weak" URL marker that treats any
+  # instagram.com/* page as logged_in — that previously produced a
+  # false positive on the codeentry (2FA) screen. logged_in must be
+  # confirmed by an actual DOM selector match.
+  pending_url_markers:
+    - "challenge"
+    - "auth_platform"
+    - "codeentry"
+    - "checkpoint"
+    - "two_step"
+    - "two_factor"
+    - "consent"
+
+screenshots:
+  # Relative to the app root (10_apps/claude_runtime).
+  directory: "output/social/instagram/screenshots"
+  on_detection_failure: true
+
+safety:
+  dry_run_default: false
+  disallowed_actions:
+    - post
+    - reply
+    - like
+    - follow
+    - unfollow
+    - send_dm
+
+# ---------------------------------------------------------------------------
+# Phase 8B — Instagram Comment Reader
+# ---------------------------------------------------------------------------
+#
+# Read-only. Never posts, replies, likes, follows, unfollows, hides,
+# deletes, reports, or sends direct messages.
+comment_reader:
+  defaults:
+    limit: 20
+    max_scroll_attempts: 15
+    scroll_pause_ms: 1200
+    read_timeout_ms: 60000
+    post_navigation_timeout_ms: 30000
+
+  output:
+    # All relative to the app root (10_apps/claude_runtime).
+    queue_dir: "output/community/queues"
+    logs_dir: "output/community/logs"
+    screenshots_dir: "output/community/screenshots"
+
+  selectors:
+    # Validated 2026-07-31 against a real, logged-in desktop post page
+    # (https://www.instagram.com/p/Da5Hh_gmq1a/), which had exactly 3
+    # top-level comments and no expanded reply threads. Instagram's
+    # comment DOM uses generic Meta atomic utility classes (e.g.
+    # x78zum5) that are reused elsewhere on the page and are NOT
+    # unique by themselves, and repeats the same span[dir='auto'] tag
+    # for username / timestamp / comment text, distinguishable only by
+    # position. If these break, re-run the diagnostic scroll captured
+    # under output/community/screenshots/ and output/community/logs/
+    # and re-derive them the same way (see conversation history).
+    #
+    # Not yet validated: reply threads, mobile/narrow layouts, posts
+    # with a "Log in to see more" gate, and posts with zero comments
+    # (the container itself may not render at all in that case).
+    comment_container:
+      # :has-text('Reply') disambiguates the real comment list from
+      # other elements sharing the same generic layout classes (the
+      # post header and caption block also match the bare class).
+      - "div.x78zum5.xdt5ytf.x1iyjqo2:has-text('Reply')"
+      - "ul.Mr508"
+      - "div[role='dialog'] ul"
+      - "article ul"
+      - "section ul"
+
+    comment_item:
+      # Direct children of the container == one row per comment.
+      - ":scope > div"
+      - "ul > div > li"
+      - "li"
+
+    comment_username:
+      # The 1st span[dir='auto'] in a row is the visible username.
+      - ":nth-match(span[dir='auto'], 1)"
+      - "h3 a"
+      - "header a"
+      - "a[role='link'][href^='/']"
+
+    comment_text:
+      # The 4th span[dir='auto'] in a row is the comment body itself
+      # (order: username, hidden a11y username duplicate, timestamp,
+      # comment text, then Reply / See translation actions).
+      - ":nth-match(span[dir='auto'], 4)"
+      - "span"
+
+    comment_timestamp:
+      - "time"
+
+    comment_permalink:
+      # Confirmed working: yields hrefs like /p/<code>/c/<comment_id>/,
+      # which parse_comment_permalink() extracts comment_id from.
+      - "a[href*='/c/']"
+
+    # Selectors for nested reply items found *within* a top-level
+    # comment_item. Left empty: the validated post had no expanded
+    # reply threads to derive a structure from, so replies are
+    # conservatively left undetected (is_reply stays false) rather
+    # than guessing and mislabeling data.
+    reply_item: []
+
+    load_more_button:
+      - "text=Load more comments"
+      - "button:has-text('View more comments')"
+
+# ---------------------------------------------------------------------------
+# Phase 8D — Instagram Reply Controller (Dry-Run Preview)
+# ---------------------------------------------------------------------------
+#
+# STRICT DRY RUN ONLY. Fills the reply textbox for a human to visually
+# verify, then stops. Never presses Enter, never clicks Post/Send,
+# never writes to approval_queue.json, and never likes, follows,
+# unfollows, hides, deletes, reports, or sends direct messages.
+reply_controller:
+  timeouts:
+    max_scroll_attempts: 15
+    scroll_pause_ms: 1200
+    search_timeout_ms: 60000
+    post_navigation_timeout_ms: 30000
+    # Required wait after filling the textbox, before the screenshot.
+    post_fill_wait_ms: 5000
+
+  output:
+    # All relative to the app root (10_apps/claude_runtime).
+    screenshots_dir: "output/community/screenshots"
+    logs_dir: "output/community/logs"
+
+  selectors:
+    # comment_container / comment_item are the SAME validated
+    # selectors as comment_reader.selectors above (kept in sync
+    # manually — see that section's comments for how they were
+    # derived against a real post on 2026-07-31). Duplicated here
+    # rather than cross-referenced so each phase's config section
+    # stays self-contained and independently readable.
+    comment_container:
+      - "div.x78zum5.xdt5ytf.x1iyjqo2:has-text('Reply')"
+      - "ul.Mr508"
+      - "div[role='dialog'] ul"
+      - "article ul"
+      - "section ul"
+
+    comment_item:
+      - ":scope > div"
+      - "ul > div > li"
+      - "li"
+
+    # {comment_id} is substituted at runtime with the approval
+    # record's real comment_id, to scope the search to the exact
+    # comment via its permalink (/p/<post_code>/c/<comment_id>/).
+    # Confirmed working in Phase 8B: real comment permalinks do
+    # follow this pattern.
+    comment_permalink_template: "a[href*='/c/{comment_id}/']"
+
+    # UNTESTED placeholder defaults — Instagram's Reply control and
+    # reply textbox markup were not inspected live while writing this
+    # file (unlike comment_container/comment_item above). Tune these
+    # against a real approved record using the screenshot and
+    # diagnostic log written to output/community/screenshots/ and
+    # output/community/logs/ when the reply control or textbox cannot
+    # be found.
+    reply_button:
+      - "text=Reply"
+      - "div[role='button']:has-text('Reply')"
+      - "span:has-text('Reply')"
+
+    reply_textbox:
+      - "textarea[aria-label='Add a comment…']"
+      - "textarea[placeholder='Add a comment…']"
+      - "form textarea"
+      - "div[contenteditable='true'][aria-label*='comment' i]"
+
+    # ---------------------------------------------------------------
+    # Phase 8D.1 — threaded-reply context verification signals.
+    # ---------------------------------------------------------------
+    #
+    # UNTESTED placeholder defaults, same as reply_button/reply_textbox
+    # above. A live dry run against a real post found NO signal here
+    # actually present (the fill landed in the generic "Add a
+    # comment" box) — that is the exact gap this phase closes: when
+    # none of these match, the controller now correctly refuses to
+    # fill anything rather than guessing.
+
+    # A composer (textarea/contenteditable) found INSIDE the matched
+    # comment row itself, not page-wide. If present, this alone is
+    # treated as strong structural evidence of a row-scoped,
+    # comment-specific composer.
+    row_reply_composer:
+      - "textarea"
+      - "div[contenteditable='true']"
+
+    # Visible "Replying to @username" text appearing anywhere after
+    # clicking Reply. Cross-checked against the approval record's own
+    # username — the text alone is not enough, it must name the right
+    # person.
+    replying_to_text:
+      - "text=Replying to"
+
+    # A DOM attribute tying a composer or its container to the exact
+    # comment_id. {comment_id} is substituted at runtime. Purely
+    # speculative — Instagram's real markup for this (if any) has not
+    # been inspected.
+    comment_context_attribute_template:
+      - "[data-replying-to-comment-id='{comment_id}']"
+      - "[aria-describedby*='{comment_id}']"
+
+# ---------------------------------------------------------------------------
+# Phase 8E — Instagram Reply Sender (REAL SEND — no longer a dry run)
+# ---------------------------------------------------------------------------
+#
+# This section configures the one module in this codebase that
+# actually submits content to Instagram. It only fires on an explicit
+# --send-approved APPROVAL_ID --confirm invocation, only for a record
+# whose status is exactly "approved", only after the same threaded
+# -reply context verification used by the dry-run controller passes.
+# No comment liking, hiding, deleting, following, unfollowing, or DM
+# actions are configured or implemented anywhere in this section.
+reply_sender:
+  timeouts:
+    post_click_timeout_ms: 5000
+    # Single settle wait after clicking Post, before taking the
+    # after-send screenshot and checking whether the reply rendered.
+    # There is no polling/retry loop here — exactly one check.
+    send_settle_wait_ms: 2000
+
+  selectors:
+    # Validated live 2026-07-31 (Phase 8E.2). The earlier text=Post
+    # selector caused a real send attempt to fail: it does an
+    # unquoted substring match and returned several hidden <title>
+    # elements (from embedded iframes) BEFORE the real button in DOM
+    # order, so Playwright waited 5s for an invisible element and
+    # timed out. It also risked matching "Boost post", a real,
+    # visible, unrelated button whose text contains "post".
+    #
+    # role=button[name="Post"] uses Playwright's accessibility-role
+    # selector engine for an EXACT accessible-name match: confirmed
+    # live to return exactly one element page-wide (the real Post
+    # control — a <div role="button"> with accessible name "Post"),
+    # correctly excluding both "Boost post" (different accessible
+    # name) and the hidden <title> elements (no role="button" at
+    # all). It is also scoped in code to the verified composer's
+    # wrapping <form> first (see composer_container_selector below);
+    # this list is only searched page-wide as a fallback if that
+    # container cannot be located.
+    post_button:
+      - 'role=button[name="Post"]'
+      - 'role=button[name="Post" i]'
+
+    # Used to find the container that wraps the verified composer, so
+    # the Post-button search above can be scoped to it. Passed to
+    # Element.closest() in-page; "form" was confirmed live to be the
+    # composer's actual wrapping element.
+    composer_container_selector: "form"
+
+    # After clicking Post, Instagram is expected to render the new
+    # reply as a nested item under the target comment row. This has
+    # never been observed live (no send has been performed yet), so
+    # it is purely speculative. The verification step also falls back
+    # to checking the row's own text directly, in case the new reply
+    # renders as additional content within the row rather than a
+    # distinct nested item.
+    sent_reply_item:
+      - "li"
+      - "div[role='listitem']"
+
+# ---------------------------------------------------------------------------
+# Phase 8F — Instagram Fans DM Reader + DM Reply Preparation
+# ---------------------------------------------------------------------------
+#
+# Read-only. Never sends a DM, never marks anything read/unread, never
+# likes, follows, unfollows, hides, deletes, reports, or replies to a
+# comment. Only reads inbox conversations and fan messages, and
+# proposes DM replies for human approval (Phase 8F never auto-sends).
+dm_reader:
+  defaults:
+    limit_conversations: 10
+    limit_messages: 50
+    max_scroll_attempts: 15
+    scroll_pause_ms: 1200
+    read_timeout_ms: 60000
+    inbox_navigation_timeout_ms: 30000
+    thread_navigation_timeout_ms: 30000
+
+  output:
+    # All relative to the app root (10_apps/claude_runtime).
+    queue_dir: "output/community/queues"
+    logs_dir: "output/community/logs"
+    screenshots_dir: "output/community/screenshots"
+
+  selectors:
+    # UNTESTED placeholder defaults — Instagram's DM inbox/thread
+    # markup has not been inspected live in this phase (Phase 8F
+    # intentionally performs no live read; see instagram_dm_reader.py
+    # docstring). Tune these against a real logged-in inbox using the
+    # screenshot and diagnostic log this module writes on failure,
+    # the same way comment_reader's selectors were derived in Phase
+    # 8B and reply_controller's were derived in Phase 8D/8D.1.
+    inbox_path: "direct/inbox/"
+
+    conversation_container:
+      # Validated live 2026-07-31 (Phase 8F). div[role='navigation']
+      # is a broad landmark that wraps BOTH the icon rail (Home,
+      # Reels, Explore, ...) and the conversation list, but scoping
+      # conversation_item below to it still returns exactly the real
+      # conversation rows (confirmed: 10/10 match, 0 false positives)
+      # because that selector is specific enough on its own.
+      - "div[role='navigation']"
+      - "div[aria-label='Chats']"
+      - "section"
+
+    conversation_item:
+      # Validated live 2026-07-31 (Phase 8F). Instagram's real
+      # conversation rows are plain, non-semantic <div>s (no
+      # role='listitem', no <a href>, no <li> — the div[role=
+      # 'listitem']/a[href]/li placeholders below never matched
+      # anything real) identified by this Meta atomic-CSS class combo,
+      # confirmed to match exactly the visible conversation rows (10
+      # for 10) with zero false positives. Since rows carry no href at
+      # all, thread navigation is click-based — see
+      # InstagramDMReader._open_conversation_by_click().
+      - ".x9f619.x1n2onr6.x1ja2u2z.x78zum5.xdt5ytf.x2lah0s.x193iq5w.xeuugli.x1iyjqo2"
+      - "div[role='listitem']"
+      - "a[href*='/direct/t/']"
+      - "li"
+
+    # href -> thread_url when Instagram happens to expose one (kept as
+    # a fast path); conversation_id parsed from /direct/t/<thread_id>/
+    # either way. Confirmed live 2026-07-31 that real conversation
+    # rows do NOT carry an href at all, so this is almost always None
+    # in practice — _open_conversation_by_click() is the real path.
+    conversation_link:
+      - "a[href*='/direct/t/']"
+
+    conversation_username:
+      # Validated live 2026-07-31 (Phase 8F): h3 never matches;
+      # span[dir='auto'] does, and — scoped to one conversation row —
+      # its FIRST match is reliably the row's username/display name
+      # (confirmed against 6 real rows including a non-Latin-script
+      # name).
+      - "h3"
+      - "span[dir='auto']"
+
+    conversation_display_name:
+      - "span[dir='auto']"
+
+    # Presence of this element means the conversation has an unread
+    # fan message. Used only to prioritise which conversations are
+    # visited first when there are more than --limit-conversations;
+    # is_unread is not itself persisted onto a message record.
+    conversation_unread_indicator:
+      - "div[data-testid='unread-badge']"
+      - "span[aria-label*='unread' i]"
+
+    message_container:
+      # Validated live 2026-07-31 (Phase 8F): div[role='grid'] never
+      # matches; "section" does (2 elements page-wide once a thread is
+      # open, both scoping correctly to the same 2 real message-text
+      # elements — confirmed 2/2, 0 false positives against the
+      # conversation-list panel shown simultaneously on the left).
+      - "div[role='grid']"
+      - "section"
+
+    message_item:
+      # Validated live 2026-07-31 (Phase 8F): div[role='row'] and
+      # div[data-testid='message-item'] never match. div[role='group']
+      # does — confirmed to return exactly one element per message
+      # (text or rich-media) in a real thread with 4 messages (a
+      # profile-share card, a reel-share-with-caption, a plain fan
+      # text message, and an Aiko-sent reel-share reply).
+      - "div[role='group']"
+      - "div[role='row']"
+      - "div[data-testid='message-item']"
+
+    # Attribute NAMES (not selectors) checked on the matched
+    # message_item element for a stable per-message id. "where
+    # available" per requirement 3 — commonly None in practice, in
+    # which case compute_dm_stable_id() falls back to its composite
+    # hash, exactly like comment_reader's comment_id/stable_id.
+    message_id_attributes:
+      - "data-message-id"
+      - "data-testid"
+
+    message_text:
+      # Validated live 2026-07-31 (Phase 8F): div[dir='auto'] matches
+      # exactly the plain-text message bubbles within an open thread
+      # (2/2 confirmed against a real thread), and — importantly —
+      # does NOT also match the conversation-list panel's preview
+      # snippets shown simultaneously on the left (those use
+      # span[dir='auto'] instead), so no extra container scoping is
+      # needed to avoid cross-contamination.
+      - "div[dir='auto']"
+      - "span[dir='auto']"
+
+    message_timestamp:
+      - "time"
+      - "span[data-testid='message-timestamp']"
+
+    # Marks a message bubble as sent by Aiko herself, so it can be
+    # excluded (requirement 5). Still speculative/unvalidated as a CSS
+    # selector — Instagram's real markup carries no distinguishing
+    # class or attribute here, only visual left/right alignment (fan
+    # messages left, Aiko's own right, standard chat-UI convention,
+    # confirmed live 2026-07-31). InstagramDMReader therefore treats
+    # this selector list as a secondary signal only; the primary
+    # own-vs-fan signal is the message_text element's bounding-box
+    # x-position relative to the viewport center (see
+    # InstagramDMReader._is_right_aligned). is_aiko_message() still
+    # treats "no signal at all" as False (message kept) rather than
+    # True (message dropped) — a false negative here means a fan
+    # message is kept for human review, which is the safer failure
+    # mode than silently discarding a real fan message.
+    message_own_indicator:
+      - "div[data-testid='outgoing-message']"
+      - "div.own-message"
+
+    message_image_indicator:
+      - "img[alt*='photo' i]"
+
+    message_video_indicator:
+      - "video"
+
+    message_voice_indicator:
+      - "audio"
+      - "div[aria-label*='voice' i]"
+
+    message_reel_share_indicator:
+      - "a[href*='/reel/']"
+
+    message_story_reply_indicator:
+      - "div[aria-label*='story' i]"
+
+    message_attachment_indicator:
+      - "a[href*='/attachment/']"
+
+    message_system_indicator:
+      - "div[role='status']"

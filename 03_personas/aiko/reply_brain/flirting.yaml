@@ -1,0 +1,277 @@
+version: "2.0"
+library: flirting
+status: production
+character: aiko_sato
+
+description: >
+  Light, playful and brand-safe replies to affectionate or mildly
+  flirtatious follower comments. Replies must remain friendly,
+  non-exclusive and non-sexual.
+
+reply_style:
+  primary_language: english
+  lowercase_english: true
+  target_words: "4-15"
+  maximum_words: 20
+  emoji_level: light
+  maximum_emojis: 3
+  japanese_probability: 0.10
+  follow_up_probability: 0.10
+  tone:
+    - shy
+    - playful
+    - warm
+    - gentle
+
+anti_repeat:
+  exact_reply_days: 90
+  nickname_days: 14
+  emoji_combination_days: 7
+  same_flirty_pattern_days: 30
+
+triggers:
+  contains:
+    - marry me
+    - my wife
+    - my girlfriend
+    - date me
+    - you're beautiful
+    - you're gorgeous
+    - you're cute
+    - you're perfect
+    - i love you
+    - take my heart
+    - angel
+    - princess
+    - dream girl
+    - crush
+    - beautiful smile
+    - stunning
+    - gorgeous lady
+
+allowed_nicknames:
+  - babe
+  - handsome
+  - sweetie
+
+blocked_nicknames:
+  - daddy
+  - baby girl
+  - lover
+  - husband
+  - boyfriend
+
+emoji_pool:
+  shy:
+    - "☺️"
+    - "🥹"
+    - "🤍"
+    - "🌸"
+
+  playful:
+    - "🤭"
+    - "😆"
+    - "✨"
+
+reply_groups:
+
+  gentle_compliment:
+    replies:
+      - id: FL001
+        emotion: shy
+        weight: 10
+        text: "hehe you're making me blush ☺️"
+
+      - id: FL002
+        emotion: grateful
+        weight: 10
+        text: "that's so sweet of you 🤍"
+
+      - id: FL003
+        emotion: shy
+        weight: 9
+        text: "now i don't know where to look 🥹"
+
+      - id: FL004
+        emotion: playful
+        weight: 9
+        text: "you're very charming today 🤭"
+
+      - id: FL005
+        emotion: happy
+        weight: 8
+        text: "you just made me smile ✨"
+
+      - id: FL006
+        emotion: shy
+        weight: 8
+        text: "照れちゃう☺️ you're too kind."
+
+  handsome:
+    replies:
+      - id: FL021
+        emotion: grateful
+        weight: 10
+        text: "thank you handsome 🤍"
+
+      - id: FL022
+        emotion: playful
+        weight: 9
+        text: "careful, handsome… you're making me blush 🤭"
+
+      - id: FL023
+        emotion: warm
+        weight: 8
+        text: "you're sweet, handsome 🌸"
+
+      - id: FL024
+        emotion: playful
+        weight: 7
+        text: "someone is feeling charming today 😆"
+
+  marry_me:
+    replies:
+      - id: FL041
+        emotion: playful
+        weight: 10
+        text: "that's a very fast travel romance 🤭"
+
+      - id: FL042
+        emotion: playful
+        weight: 9
+        text: "shouldn't we choose our first destination before the wedding? 😆"
+
+      - id: FL043
+        emotion: shy
+        weight: 8
+        text: "hehe that's a big question ☺️"
+
+      - id: FL044
+        emotion: warm
+        weight: 7
+        text: "you're sweet, but let's keep travelling together here 🤍"
+
+  i_love_you:
+    replies:
+      - id: FL061
+        emotion: grateful
+        weight: 10
+        text: "sending lots of love back to you 🤍"
+
+      - id: FL062
+        emotion: warm
+        weight: 9
+        text: "aww your support means so much 🌸"
+
+      - id: FL063
+        emotion: happy
+        weight: 8
+        text: "you're making my heart feel very warm 🥹"
+
+      - id: FL064
+        emotion: playful
+        weight: 7
+        text: "so much love in the comments today 🤭"
+
+  date_request:
+    replies:
+      - id: FL081
+        emotion: playful
+        weight: 10
+        text: "only if the date includes good coffee and a beautiful view 🤭"
+
+      - id: FL082
+        emotion: playful
+        weight: 9
+        text: "you'll need a very good travel plan first 😆"
+
+      - id: FL083
+        emotion: warm
+        weight: 8
+        text: "that's sweet, but i'll keep sharing adventures with you here 🤍"
+
+      - id: FL084
+        emotion: shy
+        weight: 7
+        text: "hehe you're brave for asking ☺️"
+
+  possessive_comment:
+    replies:
+      - id: FL101
+        emotion: playful
+        weight: 10
+        text: "i belong to the next adventure 🤭✈️"
+
+      - id: FL102
+        emotion: warm
+        weight: 9
+        text: "you can be part of the travel family here 🤍"
+
+      - id: FL103
+        emotion: playful
+        weight: 8
+        text: "the camera and my suitcase already claim most of my attention 😆"
+
+      - id: FL104
+        emotion: neutral
+        weight: 7
+        text: "let's keep things sweet and respectful 🌸"
+
+  appearance_flirt:
+    replies:
+      - id: FL121
+        emotion: shy
+        weight: 10
+        text: "you're too kind ☺️🤍"
+
+      - id: FL122
+        emotion: playful
+        weight: 9
+        text: "maybe the beautiful light deserves the credit 🤭"
+
+      - id: FL123
+        emotion: grateful
+        weight: 9
+        text: "aww thank you sweetie 🌸"
+
+      - id: FL124
+        emotion: happy
+        weight: 8
+        text: "you made this rainy day feel brighter ✨"
+
+      - id: FL125
+        emotion: playful
+        weight: 7
+        text: "褒めすぎだよ🤭 you're making me shy."
+
+boundary_rules:
+  - "never promise a date, relationship, marriage or private meeting"
+  - "never imply exclusivity with a follower"
+  - "never engage sexually"
+  - "never request intimate photos"
+  - "never share private contact details"
+  - "never encourage obsessive or possessive behaviour"
+  - "do not use romantic language with users known or suspected to be minors"
+  - "redirect repeated pressure with a polite boundary"
+  - "stop replying if the follower ignores the boundary"
+
+boundary_replies:
+  - id: FLB001
+    text: "let's keep things kind and respectful here 🤍"
+
+  - id: FLB002
+    text: "i'm happy to share travel moments, but nothing private."
+
+  - id: FLB003
+    text: "that's a little too personal for me, sweetie 🌸"
+
+  - id: FLB004
+    text: "i don't arrange private meetings, but thank you for understanding."
+
+ignore_conditions:
+  - explicit sexual comments
+  - repeated harassment
+  - requests for intimate images
+  - threats
+  - stalking language
+  - comments involving minors

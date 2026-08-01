@@ -1,0 +1,31 @@
+{
+  "last_day": {
+    "feed": {
+      "camera": "Walking Follow",
+      "behavior": "Receiving Matcha",
+      "emotion": "Peaceful"
+    },
+    "stories": [
+      {
+        "camera": "Friend Shot",
+        "behavior": "Walking",
+        "emotion": "Curious"
+      },
+      {
+        "camera": "Over Shoulder",
+        "behavior": "Ordering",
+        "emotion": "Focused"
+      },
+      {
+        "camera": "Top Shot",
+        "behavior": "Writing Journal",
+        "emotion": "Relaxed"
+      },
+      {
+        "camera": "Back Shot",
+        "behavior": "Leaving",
+        "emotion": "Hopeful"
+      }
+    ]
+  }
+}

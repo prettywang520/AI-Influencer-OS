@@ -1,0 +1,13 @@
+rules:
+
+  no_same_outfit_two_days: true
+
+  no_same_top_three_days: true
+
+  no_same_color_two_days: true
+
+  city_match: true
+
+  weather_match: true
+
+  activity_match: true

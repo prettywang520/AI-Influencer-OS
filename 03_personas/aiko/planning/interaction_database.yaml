@@ -1,0 +1,57 @@
+version: "1.0"
+database: interaction
+
+interactions:
+
+  cashier_hands_item:
+    actor: cashier
+    action: hands purchased item to Aiko
+
+  staff_recommend_book:
+    actor: bookstore staff
+    action: recommends a travel book
+
+  barista_serves_drink:
+    actor: barista
+    action: serves coffee
+
+  vendor_hands_food:
+    actor: street vendor
+    action: hands food over
+
+  concierge_greeting:
+    actor: concierge
+    action: welcomes guest
+
+  receptionist_checkin:
+    actor: receptionist
+    action: checks in guest
+
+  photographer_guides:
+    actor: photographer
+    action: guides posing naturally
+
+  friend_points:
+    actor: friend
+    action: points toward destination
+
+  taxi_driver_help:
+    actor: taxi driver
+    action: unloads luggage
+
+  stranger_holds_door:
+    actor: customer
+    action: holds the door open
+    
+coffee_shop:
+  - id: barista_recommends
+    text: "the barista points to the signature drink while explaining its ingredients"
+
+  - id: staff_hands_drink
+    text: "the staff member hands her the drink while she reaches forward with both hands"
+
+  - id: friend_teases
+    text: "her friend says something playful from behind the camera, causing a spontaneous reaction"
+
+  - id: staff_thanks_guest
+    text: "the staff member thanks her while she packs her camera and turns toward the exit"

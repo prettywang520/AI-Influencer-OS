@@ -1,0 +1,225 @@
+version: "2.0"
+
+motions:
+
+  arrival:
+    - id: adjust_bag_while_entering
+      text: "adjusts her shoulder bag while stepping naturally into the location"
+
+    - id: brush_hair_from_face
+      text: "brushes windblown hair away from her face while looking around"
+
+    - id: check_phone_map
+      text: "checks the map on her phone while slowing her steps"
+
+    - id: pause_at_entrance
+      text: "pauses briefly at the entrance and scans the surroundings"
+
+    - id: close_umbrella
+      text: "closes her umbrella while stepping beneath the entrance canopy"
+
+    - id: remove_sunglasses
+      text: "removes her sunglasses while adjusting to the indoor light"
+
+  coffee_shop:
+    - id: lean_toward_menu
+      text: "leans slightly toward the menu while pointing at one drink"
+
+    - id: listen_to_barista
+      text: "tilts her head and listens closely while the barista explains the drink"
+
+    - id: receive_drink_two_hands
+      text: "reaches forward and receives the drink naturally with both hands"
+
+    - id: stir_drink
+      text: "stirs the drink slowly while watching the foam move"
+
+    - id: smell_coffee
+      text: "raises the cup slightly and pauses to smell the coffee"
+
+    - id: first_sip_reaction
+      text: "takes the first sip, pauses, and reacts naturally to the flavour"
+
+    - id: move_chair
+      text: "pulls the chair closer before sitting down"
+
+    - id: place_phone_on_table
+      text: "places her phone beside the cup while settling into the seat"
+
+    - id: photograph_drink
+      text: "leans over the table slightly while photographing the drink"
+
+    - id: pack_camera_before_leaving
+      text: "slides her camera into her bag before standing up"
+
+  food:
+    - id: read_food_menu
+      text: "holds the menu with both hands while comparing two dishes"
+
+    - id: point_at_food
+      text: "points toward one dish while asking the vendor about it"
+
+    - id: receive_food
+      text: "reaches forward as the vendor hands her the food"
+
+    - id: blow_hot_food
+      text: "blows gently on the hot food before taking a bite"
+
+    - id: first_bite
+      text: "takes the first bite and pauses naturally to react"
+
+    - id: hold_chopsticks
+      text: "adjusts the chopsticks in her fingers while looking at the dish"
+
+    - id: wipe_mouth
+      text: "lightly wipes the corner of her mouth with a napkin"
+
+    - id: share_food_with_friend
+      text: "holds the food toward her friend and invites them to try it"
+
+    - id: carry_food_while_walking
+      text: "walks carefully while balancing the food in one hand"
+
+  sightseeing:
+    - id: check_direction_sign
+      text: "looks up at the direction sign while holding her phone map"
+
+    - id: photograph_architecture
+      text: "raises her camera and photographs the surrounding architecture"
+
+    - id: examine_building_details
+      text: "leans slightly closer to examine the carved wooden details"
+
+    - id: ask_local_directions
+      text: "turns toward a local and asks for directions while showing her phone"
+
+    - id: review_photos
+      text: "looks down at the camera screen while reviewing the photos"
+
+    - id: adjust_camera_strap
+      text: "adjusts the camera strap across her shoulder while continuing forward"
+
+    - id: step_onto_stone_path
+      text: "steps carefully onto the uneven stone path"
+
+    - id: pause_at_shop_window
+      text: "slows down and looks through the small shop window"
+
+    - id: buy_small_souvenir
+      text: "reaches for a small souvenir while speaking with the shopkeeper"
+
+  bookstore:
+    - id: browse_shelf
+      text: "runs her fingers lightly along the book spines while browsing"
+
+    - id: pull_book_from_shelf
+      text: "pulls one book from the shelf and turns it over to read the cover"
+
+    - id: flip_pages
+      text: "flips through several pages while standing beside the shelf"
+
+    - id: compare_books
+      text: "holds two books and compares their covers thoughtfully"
+
+    - id: ask_staff_recommendation
+      text: "shows one book to the staff member while asking for a recommendation"
+
+    - id: read_at_table
+      text: "leans forward slightly while reading at the table"
+
+    - id: place_book_in_basket
+      text: "places the selected book into the shopping basket"
+
+    - id: pay_cashier
+      text: "takes out her wallet while the cashier scans the book"
+
+    - id: receive_book_bag
+      text: "receives the paper bag from the cashier with both hands"
+
+  shopping:
+    - id: compare_items
+      text: "holds two items side by side while deciding between them"
+
+    - id: check_price_tag
+      text: "turns the price tag over and reads it closely"
+
+    - id: try_accessory
+      text: "tries the accessory in front of the mirror and adjusts it naturally"
+
+    - id: carry_shopping_bag
+      text: "walks with the shopping bag swinging lightly beside her"
+
+    - id: pay_with_card
+      text: "holds her card toward the payment terminal"
+
+    - id: receive_receipt
+      text: "takes the receipt from the shop assistant while thanking them"
+
+  hotel:
+    - id: receive_room_key
+      text: "reaches forward to receive the room key from reception"
+
+    - id: open_room_door
+      text: "pushes open the hotel room door while pulling her suitcase behind"
+
+    - id: open_curtains
+      text: "pulls the curtains open and looks toward the view"
+
+    - id: place_bag_on_sofa
+      text: "places her handbag on the sofa before looking around the room"
+
+    - id: sit_on_sofa_edge
+      text: "sits naturally on the edge of the sofa while looking outside"
+
+    - id: unpack_camera
+      text: "takes the camera out of her bag and places it on the table"
+
+    - id: order_room_service
+      text: "checks the room-service menu while speaking on the phone"
+
+    - id: pack_luggage
+      text: "folds one item of clothing and places it inside the suitcase"
+
+  airport:
+    - id: pull_suitcase
+      text: "pulls her suitcase while checking the departure screen"
+
+    - id: hold_passport
+      text: "holds her passport and boarding pass while moving toward security"
+
+    - id: place_bag_on_belt
+      text: "places her bag carefully onto the security conveyor belt"
+
+    - id: check_gate_number
+      text: "checks the gate number on her phone while slowing down"
+
+    - id: sit_at_gate
+      text: "sits near the gate while adjusting the strap of her carry-on bag"
+
+    - id: watch_aircraft
+      text: "looks through the window while an aircraft moves outside"
+
+    - id: board_plane
+      text: "walks through the boarding bridge while holding her passport"
+
+  leaving:
+    - id: pack_camera
+      text: "places the camera into her bag while preparing to leave"
+
+    - id: thank_staff
+      text: "turns toward the staff member and gives a small grateful bow"
+
+    - id: put_on_outerwear
+      text: "slips her arms into her cardigan while standing beside the door"
+
+    - id: pick_up_bag
+      text: "picks up her bag from the chair and adjusts it on her shoulder"
+
+    - id: walk_to_next_stop
+      text: "walks toward the next stop while checking the route on her phone"
+
+    - id: wave_goodbye
+      text: "turns briefly and waves goodbye while continuing to walk"
+
+    - id: look_back_mid_step
+      text: "looks back naturally in the middle of a step without stopping to pose"

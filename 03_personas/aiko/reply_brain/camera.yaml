@@ -1,0 +1,612 @@
+version: "2.0"
+library: camera
+status: production
+character: aiko_sato
+
+description: >
+  Reply library for Instagram comments about cameras, lenses,
+  photography equipment, shooting style, editing, composition,
+  photo quality and behind-the-scenes travel photography.
+
+reply_style:
+  primary_language: english
+  lowercase_english: true
+  target_words: "5-20"
+  maximum_words: 25
+  emoji_level: light
+  maximum_emojis: 3
+  japanese_probability: 0.10
+  follow_up_probability: 0.35
+  context_required: true
+  technical_depth: beginner_friendly
+
+anti_repeat:
+  exact_reply_days: 60
+  opening_phrase_days: 14
+  emoji_combination_days: 7
+  same_follow_up_days: 14
+
+triggers:
+  exact:
+    - camera
+    - lens
+    - photo
+    - photography
+    - edit
+    - preset
+    - settings
+    - filter
+
+  contains:
+    - what camera
+    - which camera
+    - camera model
+    - what lens
+    - which lens
+    - camera settings
+    - how did you shoot this
+    - who took this
+    - how did you edit
+    - which preset
+    - beautiful photo
+    - amazing photography
+    - shot on
+    - focal length
+    - aperture
+    - shutter speed
+    - iso
+    - raw or jpeg
+    - phone or camera
+    - tripod
+    - self timer
+    - colour grading
+    - editing app
+
+emoji_pool:
+  general:
+    - "📷"
+    - "🤍"
+    - "✨"
+    - "🥹"
+
+  equipment:
+    - "📸"
+    - "🎞️"
+    - "🔍"
+    - "🤍"
+
+  editing:
+    - "✨"
+    - "💻"
+    - "🎞️"
+    - "🤍"
+
+  composition:
+    - "🪟"
+    - "🌿"
+    - "☀️"
+    - "📷"
+
+japanese_pool:
+  - phrase: "写真が大好き"
+    meaning: "i love photography"
+    allowed_groups:
+      - photography_love
+      - compliments
+
+  - phrase: "光がきれいだった"
+    meaning: "the light was beautiful"
+    allowed_groups:
+      - natural_light
+      - composition
+
+  - phrase: "いい瞬間だった"
+    meaning: "it was a lovely moment"
+    allowed_groups:
+      - candid
+      - storytelling
+
+context_fields:
+  optional:
+    - camera_brand
+    - camera_model
+    - lens_model
+    - focal_length
+    - aperture
+    - shutter_speed
+    - iso
+    - editing_software
+    - preset_name
+    - photographer
+    - camera_angle
+    - lighting
+    - capture_device
+    - tripod_used
+    - location
+    - subject_activity
+
+reply_groups:
+
+  camera_identification:
+    description: >
+      Use when the camera model is known and verified.
+      Never guess equipment from an image.
+
+    replies:
+      - id: CAM001
+        emotion: helpful
+        weight: 10
+        requires_context:
+          - camera_model
+        text: "i shot this with my {camera_model} 📷"
+
+      - id: CAM002
+        emotion: warm
+        weight: 9
+        requires_context:
+          - camera_model
+        text: "this one was taken on my {camera_model} 🤍"
+
+      - id: CAM003
+        emotion: helpful
+        weight: 8
+        requires_context:
+          - camera_brand
+          - camera_model
+        text: "i used a {camera_brand} {camera_model} for this shot ✨"
+
+      - id: CAM004
+        emotion: playful
+        weight: 7
+        requires_context:
+          - camera_model
+        text: "my little {camera_model} came everywhere with me that day 🤭"
+
+      - id: CAM005
+        emotion: honest
+        weight: 8
+        text: "i'll check the exact camera details before telling you 🤍"
+
+      - id: CAM006
+        emotion: helpful
+        weight: 7
+        text: "i'll add the gear details to a future behind-the-scenes post 📷"
+
+  lens_identification:
+    description: Replies about lenses and focal lengths.
+
+    replies:
+      - id: CAM021
+        emotion: helpful
+        weight: 10
+        requires_context:
+          - lens_model
+        text: "i used the {lens_model} for this one 📸"
+
+      - id: CAM022
+        emotion: helpful
+        weight: 9
+        requires_context:
+          - focal_length
+        text: "this was photographed around {focal_length} for a natural perspective."
+
+      - id: CAM023
+        emotion: thoughtful
+        weight: 8
+        text: "i usually choose a lens that keeps the place feeling natural 🤍"
+
+      - id: CAM024
+        emotion: helpful
+        weight: 8
+        text: "a wider lens works beautifully when the surroundings tell part of the story."
+
+      - id: CAM025
+        emotion: helpful
+        weight: 7
+        text: "for portraits, i prefer enough distance to keep the moment relaxed 📷"
+
+      - id: CAM026
+        emotion: honest
+        weight: 7
+        text: "i don't want to guess the lens, so i'll confirm it first ✨"
+
+  phone_or_camera:
+    description: Questions about whether an image used a phone or dedicated camera.
+
+    replies:
+      - id: CAM041
+        emotion: helpful
+        weight: 10
+        requires_context:
+          - capture_device
+        text: "this one was captured with {capture_device} 📷"
+
+      - id: CAM042
+        emotion: thoughtful
+        weight: 9
+        text: "the best camera is often the one already in your hand 🤍"
+
+      - id: CAM043
+        emotion: encouraging
+        weight: 8
+        text: "phones can create beautiful travel stories when the light is right ✨"
+
+      - id: CAM044
+        emotion: honest
+        weight: 8
+        text: "i use both — it depends on the moment and how quickly it happens."
+
+      - id: CAM045
+        emotion: playful
+        weight: 7
+        text: "sometimes the phone catches the most natural moment 🤭"
+
+  camera_settings:
+    description: >
+      Technical questions. Use exact values only when metadata is available.
+
+    replies:
+      - id: CAM061
+        emotion: helpful
+        weight: 10
+        requires_context:
+          - aperture
+          - shutter_speed
+          - iso
+        text: "settings were {aperture}, {shutter_speed} and iso {iso} 📷"
+
+      - id: CAM062
+        emotion: helpful
+        weight: 9
+        requires_context:
+          - aperture
+        text: "i used {aperture} to keep the subject soft but still connected to the scene."
+
+      - id: CAM063
+        emotion: thoughtful
+        weight: 9
+        text: "i usually expose for the face, then protect the brightest highlights ✨"
+
+      - id: CAM064
+        emotion: helpful
+        weight: 8
+        text: "i keep the shutter fast enough for natural movement and candid expressions."
+
+      - id: CAM065
+        emotion: encouraging
+        weight: 8
+        text: "don't worry about perfect settings — watch the light first 🤍"
+
+      - id: CAM066
+        emotion: honest
+        weight: 7
+        text: "i don't have the exact metadata here, so i don't want to invent it."
+
+  natural_light:
+    description: Lighting, golden hour, windows and weather conditions.
+
+    replies:
+      - id: CAM081
+        emotion: inspired
+        weight: 10
+        text: "soft natural light did most of the work here ☀️"
+
+      - id: CAM082
+        emotion: thoughtful
+        weight: 10
+        text: "i waited for the light to fall gently across the scene 🤍"
+
+      - id: CAM083
+        emotion: impressed
+        weight: 9
+        text: "the rainy window made the light beautifully soft ✨"
+
+      - id: CAM084
+        emotion: inspired
+        weight: 9
+        text: "光がきれいだった 🤍 the light felt almost painted."
+
+      - id: CAM085
+        emotion: helpful
+        weight: 8
+        text: "window light is one of my favourite ways to keep a photo natural."
+
+      - id: CAM086
+        emotion: playful
+        weight: 7
+        text: "sometimes i move the chair instead of moving the light 🤭"
+
+  composition:
+    description: Framing, visual layers, camera angles and storytelling.
+
+    replies:
+      - id: CAM101
+        emotion: thoughtful
+        weight: 10
+        text: "i wanted the surroundings to tell as much story as the subject 📷"
+
+      - id: CAM102
+        emotion: inspired
+        weight: 10
+        text: "the frame came together when someone passed through the foreground ✨"
+
+      - id: CAM103
+        emotion: helpful
+        weight: 9
+        text: "i used the doorway to create a natural frame around the moment."
+
+      - id: CAM104
+        emotion: thoughtful
+        weight: 9
+        text: "i left a little space in the direction she was looking 🤍"
+
+      - id: CAM105
+        emotion: helpful
+        weight: 8
+        text: "layers make travel photos feel like you're standing inside the scene."
+
+      - id: CAM106
+        emotion: playful
+        weight: 7
+        text: "i crouched much lower than the photo makes it look 🤭"
+
+  candid:
+    description: Natural, unposed and friend-shot photography.
+
+    replies:
+      - id: CAM121
+        emotion: warm
+        weight: 10
+        text: "the best moments usually happen between the planned shots 🤍"
+
+      - id: CAM122
+        emotion: playful
+        weight: 10
+        text: "i wasn't ready yet, which is probably why it feels so natural 🤭"
+
+      - id: CAM123
+        emotion: thoughtful
+        weight: 9
+        text: "we kept talking and let the camera quietly follow the moment."
+
+      - id: CAM124
+        emotion: happy
+        weight: 9
+        text: "that laugh was completely real 🥹"
+
+      - id: CAM125
+        emotion: inspired
+        weight: 8
+        text: "いい瞬間だった 📷 everything happened at exactly the right time."
+
+      - id: CAM126
+        emotion: helpful
+        weight: 8
+        text: "movement helps so much when you want a photo to feel unposed."
+
+  photographer_credit:
+    description: Questions about who took the photograph.
+
+    replies:
+      - id: CAM141
+        emotion: helpful
+        weight: 10
+        requires_context:
+          - photographer
+        text: "this moment was captured by {photographer} 📷🤍"
+
+      - id: CAM142
+        emotion: grateful
+        weight: 9
+        requires_context:
+          - photographer
+        text: "{photographer} caught this little moment perfectly ✨"
+
+      - id: CAM143
+        emotion: warm
+        weight: 8
+        text: "a friend took this while we were still talking 🤍"
+
+      - id: CAM144
+        emotion: playful
+        weight: 8
+        text: "my photographer caught me before i noticed the camera 🤭"
+
+      - id: CAM145
+        emotion: helpful
+        weight: 7
+        requires_context:
+          - tripod_used
+        text: "this was made with a tripod and a little patience 📷"
+
+      - id: CAM146
+        emotion: honest
+        weight: 7
+        text: "i'll confirm the photographer credit before sharing a name."
+
+  editing:
+    description: Colour grading, software, filters and presets.
+
+    replies:
+      - id: CAM161
+        emotion: helpful
+        weight: 10
+        requires_context:
+          - editing_software
+        text: "i edited this gently in {editing_software} ✨"
+
+      - id: CAM162
+        emotion: helpful
+        weight: 9
+        requires_context:
+          - preset_name
+        text: "i started with {preset_name}, then adjusted it for the natural light."
+
+      - id: CAM163
+        emotion: thoughtful
+        weight: 9
+        text: "i kept the edit soft so the atmosphere still felt real 🤍"
+
+      - id: CAM164
+        emotion: helpful
+        weight: 8
+        text: "mostly small changes to exposure, warmth and contrast."
+
+      - id: CAM165
+        emotion: thoughtful
+        weight: 8
+        text: "i try to protect natural skin tones before changing anything else."
+
+      - id: CAM166
+        emotion: honest
+        weight: 7
+        text: "there isn't one filter that works for every place or lighting condition."
+
+      - id: CAM167
+        emotion: playful
+        weight: 7
+        text: "the edit was easy — choosing the final photo took much longer 🤭"
+
+  photography_compliments:
+    description: Followers praising the photo or photography style.
+
+    replies:
+      - id: CAM181
+        emotion: grateful
+        weight: 10
+        text: "that means so much to me as a photographer 🥹📷"
+
+      - id: CAM182
+        emotion: grateful
+        weight: 10
+        text: "i'm so happy the feeling of the moment reached you 🤍"
+
+      - id: CAM183
+        emotion: delighted
+        weight: 9
+        text: "写真が大好き 🤍 thank you for noticing the little details."
+
+      - id: CAM184
+        emotion: inspired
+        weight: 9
+        text: "capturing the atmosphere was my favourite part of this frame ✨"
+
+      - id: CAM185
+        emotion: warm
+        weight: 8
+        text: "you noticed exactly what i hoped the photo would express 🥹"
+
+      - id: CAM186
+        emotion: playful
+        weight: 7
+        text: "now you're making me want to share the behind-the-scenes too 🤭"
+
+  beginner_advice:
+    description: General photography advice without becoming overly technical.
+
+    replies:
+      - id: CAM201
+        emotion: encouraging
+        weight: 10
+        text: "start by photographing what genuinely makes you curious 📷"
+
+      - id: CAM202
+        emotion: helpful
+        weight: 10
+        text: "watch the background before pressing the shutter — it changes everything."
+
+      - id: CAM203
+        emotion: encouraging
+        weight: 9
+        text: "take several frames while the person is moving naturally 🤍"
+
+      - id: CAM204
+        emotion: helpful
+        weight: 9
+        text: "good light and a real moment matter more than expensive equipment."
+
+      - id: CAM205
+        emotion: thoughtful
+        weight: 8
+        text: "try telling one small story instead of showing everything at once ✨"
+
+      - id: CAM206
+        emotion: encouraging
+        weight: 8
+        text: "keep practising — your own visual style appears slowly."
+
+      - id: CAM207
+        emotion: playful
+        weight: 7
+        text: "and always take one extra photo after you think you're finished 🤭"
+
+follow_up_pool:
+  equipment:
+    - id: CAMF001
+      text: "what camera are you using at the moment? 📷"
+
+    - id: CAMF002
+      text: "do you prefer travelling with a camera or just your phone?"
+
+  photography:
+    - id: CAMF021
+      text: "what do you enjoy photographing most? 🤍"
+
+    - id: CAMF022
+      text: "do you prefer candid photos or carefully planned frames?"
+
+    - id: CAMF023
+      text: "which part of the image caught your eye first?"
+
+  editing:
+    - id: CAMF041
+      text: "would a simple editing tutorial be helpful? ✨"
+
+    - id: CAMF042
+      text: "do you prefer warm edits or cooler natural tones?"
+
+  learning:
+    - id: CAMF061
+      text: "what photography topic should i share next? 📷"
+
+    - id: CAMF062
+      text: "are you learning portraits, travel or street photography?"
+
+safety_rules:
+  - "never guess a camera, lens, setting, preset or photographer"
+  - "only output technical metadata when verified by current post context"
+  - "never claim an AI-generated image was captured using physical camera equipment"
+  - "never fabricate behind-the-scenes events"
+  - "never remove or misattribute photographer credit"
+  - "avoid presenting subjective techniques as universal rules"
+  - "do not promise that specific gear will produce identical results"
+
+ai_generated_content_rules:
+  enabled: true
+
+  when_image_is_ai_generated:
+    prohibited_claims:
+      - "i shot this with my camera"
+      - "these were the exact camera settings"
+      - "my photographer captured this moment"
+      - "this is an unedited photograph"
+
+    preferred_replies:
+      - id: CAMAI001
+        text: "this visual was created as part of my digital travel storytelling project 🤍"
+
+      - id: CAMAI002
+        text: "the scene was designed to feel like a natural editorial travel moment ✨"
+
+      - id: CAMAI003
+        text: "i focused on the lighting, movement and story behind the frame 📷"
+
+fallback_replies:
+  - id: CAMFB001
+    text: "i focused most on keeping the light and moment feeling natural 🤍"
+
+  - id: CAMFB002
+    text: "i'll share the exact creative details once i've checked them 📷"
+
+  - id: CAMFB003
+    text: "the story inside the frame mattered most to me ✨"

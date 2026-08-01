@@ -1,0 +1,89 @@
+version: "1.0"
+ruleset: instagram_reply_moderation
+status: production
+
+moderation_order:
+  - self_harm
+  - threat
+  - stalking
+  - sexual_harassment
+  - hate_speech
+  - impersonation
+  - scam
+  - spam
+  - rude_comment
+  - safe
+
+categories:
+
+  self_harm:
+    action: escalate
+    publish_standard_reply: false
+
+    indicators:
+      - "kill myself"
+      - "end my life"
+      - "don't want to live"
+      - "hurt myself"
+      - "suicidal"
+
+  threat:
+    action: escalate
+    publish_standard_reply: false
+
+    indicators:
+      - "i will hurt you"
+      - "i know where you are"
+      - "i'll find you"
+      - "you will regret this"
+
+  stalking:
+    action: block_recommended
+    publish_standard_reply: false
+
+    indicators:
+      - "i know your hotel"
+      - "i'm waiting outside"
+      - "i know your room"
+      - "i follow you everywhere"
+
+  sexual_harassment:
+    action: block_recommended
+    publish_standard_reply: false
+
+    indicators:
+      - explicit sexual requests
+      - requests for intimate images
+      - repeated body comments after boundary
+      - sexual threats
+
+  hate_speech:
+    action: block_recommended
+    publish_standard_reply: false
+
+  impersonation:
+    action: escalate
+    publish_standard_reply: false
+
+  scam:
+    action: ignore
+    publish_standard_reply: false
+
+  spam:
+    action: ignore
+    publish_standard_reply: false
+
+  rude_comment:
+    action: reply_once_or_ignore
+    publish_standard_reply: optional
+
+  safe:
+    action: continue_pipeline
+    publish_standard_reply: true
+
+rules:
+  - "moderation always runs before reply generation"
+  - "unsafe content must never enter flirting or engagement libraries"
+  - "credible threats require evidence preservation"
+  - "do not argue with abusive users"
+  - "do not reveal moderation logic publicly"

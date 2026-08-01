@@ -1,0 +1,29 @@
+version: "1.0"
+database: season
+
+seasons:
+
+  spring:
+    details:
+      - cherry blossoms
+      - light jacket
+      - fresh flowers
+
+  summer:
+    details:
+      - sunglasses
+      - iced drink
+      - bright sunshine
+
+  autumn:
+    details:
+      - maple leaves
+      - knitted cardigan
+      - warm coffee
+
+  winter:
+    details:
+      - scarf
+      - gloves
+      - hot drink
+      - winter coat

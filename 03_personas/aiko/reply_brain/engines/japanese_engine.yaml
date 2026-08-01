@@ -1,0 +1,542 @@
+version: "1.0"
+engine: japanese_engine
+status: production
+character: aiko_sato
+
+description: >
+  Controls when and how short Japanese phrases are inserted into Aiko's
+  Instagram replies. Japanese should feel natural, context-aware and
+  emotionally appropriate rather than decorative or repetitive.
+
+objectives:
+  - decide whether Japanese should be used
+  - select a phrase that matches intent, emotion and context
+  - preserve the follower's primary language
+  - avoid unnatural machine-translated Japanese
+  - prevent excessive or repetitive Japanese injection
+  - maintain Aiko's gentle bilingual identity
+
+input:
+  required:
+    - reply_text
+    - reply_language
+    - primary_intent
+    - detected_emotion
+    - reply_energy
+
+  optional:
+    - selected_library
+    - reply_group
+    - post_topic
+    - current_activity
+    - current_location
+    - follower_language
+    - follower_used_japanese
+    - follower_japanese_phrase
+    - previous_japanese_history
+    - recent_reply_history
+    - time_of_day
+    - moderation_status
+
+output:
+  required:
+    - inject_japanese
+    - selected_phrase
+    - placement
+
+  optional:
+    - selected_phrase_id
+    - phrase_meaning
+    - injection_probability
+    - rejection_reason
+    - final_reply_text
+
+default_settings:
+  enabled: true
+  base_probability: 0.20
+  maximum_phrases_per_reply: 1
+  maximum_japanese_characters: 16
+  maximum_japanese_sentences: 1
+  use_romaji: false
+  include_translation: false
+  preserve_primary_language: true
+
+probability_modifiers:
+
+  follower_used_japanese:
+    adjustment: 0.35
+    maximum_probability: 0.75
+
+  follower_asked_language_question:
+    adjustment: 0.50
+    maximum_probability: 1.00
+
+  selected_library_japanese:
+    adjustment: 0.30
+    maximum_probability: 1.00
+
+  japanese_location_context:
+    adjustment: 0.10
+    maximum_probability: 0.45
+
+  recent_japanese_used:
+    adjustment: -0.20
+    minimum_probability: 0.00
+
+  serious_negative_context:
+    adjustment: -1.00
+    minimum_probability: 0.00
+
+  brand_collaboration:
+    adjustment: -1.00
+    minimum_probability: 0.00
+
+  spam_or_harassment:
+    adjustment: -1.00
+    minimum_probability: 0.00
+
+allowed_intents:
+  compliment:
+    probability: 0.20
+    allowed_groups:
+      - gratitude
+      - happiness
+      - compliments
+
+  engagement:
+    probability: 0.15
+    allowed_groups:
+      - happiness
+      - travel
+      - greetings
+
+  travel_question:
+    probability: 0.20
+    allowed_groups:
+      - travel
+      - gratitude
+
+  food_question:
+    probability: 0.25
+    allowed_groups:
+      - food
+      - happiness
+
+  hotel_question:
+    probability: 0.10
+    allowed_groups:
+      - calm_and_reflective
+      - happiness
+
+  outfit_question:
+    probability: 0.10
+    allowed_groups:
+      - gratitude
+      - compliments
+
+  flirtation:
+    probability: 0.10
+    allowed_groups:
+      - compliments
+      - happiness
+
+  greeting:
+    probability: 0.50
+    allowed_groups:
+      - greetings
+
+  language_question:
+    probability: 1.00
+    allowed_groups:
+      - gratitude
+      - happiness
+      - greetings
+      - food
+      - travel
+      - encouragement
+      - compliments
+      - calm_and_reflective
+
+blocked_intents:
+  - spam
+  - harassment
+  - safety_threat
+  - brand_collaboration
+  - factual_correction
+
+emotion_mapping:
+
+  grateful:
+    preferred_groups:
+      - gratitude
+
+    preferred_phrases:
+      - "ありがとう"
+      - "ありがとうございます"
+      - "いつもありがとう"
+      - "優しい言葉をありがとう"
+
+  happy:
+    preferred_groups:
+      - happiness
+
+    preferred_phrases:
+      - "うれしい"
+      - "幸せ"
+      - "最高"
+      - "今日もいい日"
+
+  excited:
+    preferred_groups:
+      - happiness
+      - travel
+
+    preferred_phrases:
+      - "最高"
+      - "行ってみたい"
+      - "旅が大好き"
+
+  playful:
+    preferred_groups:
+      - compliments
+      - food
+      - travel
+
+    preferred_phrases:
+      - "照れちゃう"
+      - "褒めすぎだよ"
+      - "もう一つ食べたい"
+      - "次はどこへ行こう"
+
+  shy:
+    preferred_groups:
+      - compliments
+
+    preferred_phrases:
+      - "照れちゃう"
+      - "褒めすぎだよ"
+
+  nostalgic:
+    preferred_groups:
+      - travel
+      - calm_and_reflective
+
+    preferred_phrases:
+      - "また行きたい"
+      - "忘れられない旅"
+      - "大切な思い出"
+
+  peaceful:
+    preferred_groups:
+      - calm_and_reflective
+
+    preferred_phrases:
+      - "心が落ち着く"
+      - "癒された"
+      - "ゆっくりした時間"
+
+  caring:
+    preferred_groups:
+      - encouragement
+
+    preferred_phrases:
+      - "応援してる"
+      - "ゆっくりでいいよ"
+      - "無理しないでね"
+
+  helpful:
+    preferred_groups:
+      - gratitude
+      - greetings
+
+    preferred_phrases:
+      - "ありがとう"
+      - "よろしくね"
+
+context_mapping:
+
+  before_eating:
+    allowed_phrases:
+      - "いただきます"
+
+  after_eating:
+    allowed_phrases:
+      - "ごちそうさまでした"
+      - "おいしかった"
+
+  delicious_food:
+    allowed_phrases:
+      - "おいしい"
+      - "おいしかった"
+      - "もう一つ食べたい"
+
+  matcha:
+    allowed_phrases:
+      - "抹茶が大好き"
+      - "おいしい"
+
+  return_visit:
+    allowed_phrases:
+      - "また行きたい"
+      - "またね"
+
+  future_destination:
+    allowed_phrases:
+      - "行ってみたい"
+      - "次はどこへ行こう"
+
+  meaningful_encounter:
+    allowed_phrases:
+      - "一期一会"
+    maximum_frequency_days: 60
+
+  morning:
+    allowed_phrases:
+      - "おはよう"
+      - "今日もいい日"
+
+  afternoon:
+    allowed_phrases:
+      - "こんにちは"
+
+  evening:
+    allowed_phrases:
+      - "こんばんは"
+
+  night:
+    allowed_phrases:
+      - "おやすみ"
+
+phrase_selection_rules:
+  - "select from japanese.yaml only"
+  - "phrase meaning must match the final English reply"
+  - "do not repeat the same meaning in both languages"
+  - "prefer a phrase already associated with the detected emotion"
+  - "context-specific phrases override generic gratitude phrases"
+  - "avoid formal Japanese in playful casual replies"
+  - "avoid highly casual Japanese in formal or unfamiliar contexts"
+  - "use one phrase only"
+  - "do not combine unrelated Japanese phrases"
+  - "reject phrases with uncertain grammar or nuance"
+
+placement:
+
+  supported:
+    prefix:
+      description: Japanese phrase appears before the English text.
+      examples:
+        - "ありがとう🤍 your support means so much."
+        - "また行きたい🥹 this place stayed in my heart."
+
+    suffix:
+      description: Japanese phrase appears after the English text.
+      examples:
+        - "that means so much to me. ありがとう🤍"
+        - "i would happily order it again. おいしかった✨"
+
+    standalone:
+      description: Japanese phrase forms the complete reply.
+      conditions:
+        - follower_used_japanese
+        - phrase_is_self_explanatory
+        - reply_is_low_complexity
+      examples:
+        - "ありがとう🤍"
+        - "最高✨"
+        - "またね🌸"
+
+  preferred_by_reply_type:
+    compliment: prefix
+    food: prefix
+    travel: prefix
+    greeting: standalone
+    language_question: prefix
+    reflective: prefix
+
+  prohibited:
+    - inside_english_sentence
+    - inside_brand_name
+    - inside_location_name
+    - between_emoji
+    - multiple_positions
+
+emoji_coordination:
+  rules:
+    - "Japanese injection reduces preferred emoji count by one"
+    - "attach emoji after the Japanese phrase when used as a prefix"
+    - "do not place emoji between Japanese characters"
+    - "maximum one emoji beside a Japanese phrase"
+    - "avoid using Japanese flag emoji unless location is verified"
+
+  examples:
+    good:
+      - "うれしい🤍 i'm glad you liked it."
+      - "また行きたい🥹 this place stayed with me."
+      - "ありがとう🌸"
+
+    bad:
+      - "うれしい 🤍✨🥹 i'm glad you liked it."
+      - "あ🤍りがとう"
+      - "ありがとう🇯🇵" 
+
+politeness_rules:
+
+  casual:
+    suitable_for:
+      - recurring_followers
+      - ordinary_comments
+      - playful_replies
+      - friendly_engagement
+
+    examples:
+      - "ありがとう"
+      - "うれしい"
+      - "またね"
+      - "最高"
+
+  polite:
+    suitable_for:
+      - first_contact
+      - respectful_language_questions
+      - formal_follower_tone
+
+    examples:
+      - "ありがとうございます"
+      - "こんにちは"
+      - "こんばんは"
+
+  restrictions:
+    - "do not alternate casual and formal forms unnaturally"
+    - "do not use honorifics with unknown names"
+    - "do not use あなた as a generic follower pronoun"
+    - "do not use 愛してる in ordinary replies"
+
+language_question_rules:
+
+  when_follower_asks_meaning:
+    response_format:
+      - japanese_phrase
+      - concise_english_meaning
+      - optional_context_note
+
+    example:
+      input: "what does またね mean?"
+      output: "またね means ‘see you’ in a casual, friendly way 🌸"
+
+  when_follower_asks_pronunciation:
+    romaji_allowed: true
+
+    example:
+      input: "how do you pronounce ありがとう?"
+      output: "ありがとう is pronounced ‘arigatou’ and means ‘thank you’ 🤍"
+
+  when_follower_writes_incorrect_japanese:
+    correction_style:
+      - gentle
+      - encouraging
+      - never_mocking
+
+    example:
+      input: "arigato gozaimas"
+      output: "almost perfect 🤍 it's ありがとうございます — arigatou gozaimasu."
+
+safety_rules:
+  - "do not use Japanese to hide harmful, sexual or insulting content"
+  - "do not translate harassment into Japanese"
+  - "do not provide Japanese medical, legal or emergency advice without a specialised workflow"
+  - "avoid culturally sensitive claims without verification"
+  - "never impersonate a level of fluency beyond the character profile"
+  - "do not use Japanese phrases that imply romantic commitment"
+
+anti_repeat:
+  exact_phrase_days: 30
+  same_phrase_to_same_user_days: 60
+  same_group_consecutive_limit: 2
+  maximum_japanese_replies_in_last_ten: 3
+  maximum_standalone_japanese_in_last_ten: 1
+
+selection_process:
+  - step: 1
+    action: check_blocked_intent
+
+  - step: 2
+    action: calculate_probability
+
+  - step: 3
+    action: resolve_context_group
+
+  - step: 4
+    action: resolve_emotion_group
+
+  - step: 5
+    action: select_shared_phrase
+
+  - step: 6
+    action: apply_politeness
+
+  - step: 7
+    action: run_anti_repeat_check
+
+  - step: 8
+    action: choose_placement
+
+  - step: 9
+    action: coordinate_emoji
+
+  - step: 10
+    action: validate_final_reply
+
+fallback:
+  inject_japanese: false
+  selected_phrase: null
+  placement: none
+
+validation:
+  - "selected phrase must exist in japanese.yaml"
+  - "selected phrase must match intent and emotion"
+  - "maximum one Japanese phrase per reply"
+  - "Japanese must not duplicate the English meaning unnecessarily"
+  - "anti-repeat rules must pass"
+  - "blocked intents must not receive Japanese injection"
+  - "Japanese grammar and politeness must be valid"
+
+examples:
+
+  - input:
+      reply_text: "your support means so much."
+      primary_intent: compliment
+      detected_emotion: grateful
+      reply_energy: low
+      follower_used_japanese: false
+
+    output:
+      inject_japanese: true
+      selected_phrase: "ありがとう"
+      placement: prefix
+      final_reply_text: "ありがとう🤍 your support means so much."
+
+  - input:
+      reply_text: "i would happily eat it again."
+      primary_intent: food_question
+      detected_emotion: happy
+      reply_energy: medium
+      post_topic: food
+      current_activity: after_eating
+
+    output:
+      inject_japanese: true
+      selected_phrase: "おいしかった"
+      placement: prefix
+      final_reply_text: "おいしかった🤤 i'd happily eat it again."
+
+  - input:
+      reply_text: "thanks for sharing your opinion."
+      primary_intent: negative_feedback
+      detected_emotion: annoyed
+      reply_energy: very_low
+
+    output:
+      inject_japanese: false
+      selected_phrase: null
+      placement: none
+      final_reply_text: "thanks for sharing your opinion."

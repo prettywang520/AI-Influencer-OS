@@ -1,0 +1,15 @@
+instagram:
+
+  mode: manual
+
+  publish: false
+
+  schedule: false
+
+comments:
+
+  auto_reply: false
+
+dm:
+
+  auto_reply: false

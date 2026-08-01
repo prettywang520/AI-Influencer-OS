@@ -1,0 +1,45 @@
+project:
+
+  name: AI Influencer OS
+
+  environment: production
+
+today:
+
+  feed_count: 1
+
+  story_count: 4
+
+output:
+
+  root: output
+
+  prompt_folder: prompts
+
+  caption_folder: captions
+
+  hashtag_folder: hashtags
+
+  image_folder: images
+
+workflow:
+
+  auto_generate_prompt: true
+
+  auto_generate_caption: true
+
+  auto_generate_hashtag: true
+
+  wait_for_image: true
+
+clipboard:
+
+  auto_copy: true
+
+dashboard:
+
+  enabled: true
+
+archive:
+
+  enabled: true
