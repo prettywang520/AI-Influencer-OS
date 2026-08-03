@@ -109,6 +109,9 @@ class PublisherConfig:
     def logs_dir(self) -> Path:
         return self.resolve_path("logs_dir", "output/publishing/logs")
 
+    def screenshots_dir(self) -> Path:
+        return self.resolve_path("screenshots_dir", "output/publishing/screenshots")
+
 
 def load_publisher_config(config_path: str | Path | None = None) -> PublisherConfig:
     path = Path(config_path) if config_path else default_publisher_config_path()

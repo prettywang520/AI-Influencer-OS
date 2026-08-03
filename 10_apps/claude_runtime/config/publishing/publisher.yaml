@@ -57,6 +57,9 @@ paths:
   queue_filename: "publish_queue.json"
   history_dir: "output/publishing/history"
   logs_dir: "output/publishing/logs"
+  # Phase 10B — Instagram Feed Publisher (Preview Only). Diagnostic
+  # screenshots only; never used to publish anything.
+  screenshots_dir: "output/publishing/screenshots"
 
   # Per-production-date source layout read from Phase 9 output
   # (output/<date>/...). Do not invent files at these paths — the

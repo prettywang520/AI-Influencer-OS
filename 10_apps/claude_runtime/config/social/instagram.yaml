@@ -508,3 +508,161 @@ dm_reader:
 
     message_system_indicator:
       - "div[role='status']"
+
+# ---------------------------------------------------------------------------
+# Phase 10B — Instagram Feed Publisher (PREVIEW ONLY)
+# ---------------------------------------------------------------------------
+#
+# Prepares one approved instagram_feed PublishJob completely — opens
+# Create, selects Post (never Story/Reel), uploads the exact approved
+# media file, advances through the crop/filter/details screens, fills
+# and verifies the caption — then STOPS. The Share button is located
+# and verified only; src/publishing/instagram_feed_preview.py contains
+# no code path that clicks it, presses Enter, or otherwise submits the
+# post. See that module's DISALLOWED_ACTIONS and SafetyTests for the
+# structural proof.
+#
+# Screenshots and the diagnostic log for this phase live under
+# output/publishing/ (config/publishing/publisher.yaml), not under
+# output/social/instagram/ like the sections above — Phase 10B is part
+# of the publishing package, not the community/reply package.
+feed_preview:
+  timeouts:
+    # Number of "Next" transitions the controller may click: Instagram's
+    # desktop upload flow is typically crop/aspect-ratio -> filter ->
+    # caption/details (2 Next clicks), but sometimes merges the first
+    # two screens (1 Next click). The controller stops as soon as no
+    # Next button is found — this is only an upper bound.
+    max_next_transitions: 2
+    action_click_timeout_ms: 5000
+    upload_settle_wait_ms: 3000
+    next_click_wait_ms: 1200
+    # Wait after the caption is filled, before reading it back for
+    # verification and taking the "ready" screenshot.
+    caption_settle_wait_ms: 1500
+    # Wait after navigating to base_url before any element lookup.
+    # Confirmed live 2026-08-03 (Phase 10B live preflight): Instagram's
+    # desktop SPA sits on a loading splash screen (logo + "from Meta")
+    # for ~7.6s after domcontentloaded before the real nav (Home/New
+    # post/etc.) becomes visible — every selector below correctly
+    # matched the DOM even during the splash screen, but is_visible()
+    # correctly reported false for all of them until it cleared. 9000ms
+    # gives headroom above the measured 7.6s.
+    navigation_settle_wait_ms: 9000
+    # Wait after clicking Create, before searching for the Post option
+    # in the resulting flyout menu. Confirmed live 2026-08-03.
+    create_menu_wait_ms: 1500
+    # Wait after clicking Post, before searching for the file input —
+    # the "Create new post" dialog (including its file input) takes
+    # noticeably longer to fully mount than the Create flyout did.
+    # Confirmed live 2026-08-03: the file input was not yet present at
+    # +1000ms but was reliably present by +2000ms; 2500ms gives
+    # headroom.
+    dialog_open_wait_ms: 2500
+
+  selectors:
+    # Validated live 2026-08-03 (Phase 10B live preflight) against a
+    # real, logged-in desktop session, up through the Share-button
+    # verification step — Share was located and verified only, never
+    # clicked. Each selector below is annotated with what was actually
+    # confirmed. Where a selector list has multiple entries, the first
+    # is the one confirmed live; the rest are untested fallbacks kept
+    # for resilience against future Instagram DOM changes.
+    create_button:
+      # Confirmed: exactly 1 match, visible, clicking it opens the
+      # Create flyout (Post / Live video / Ad). The role=link candidate
+      # that was untested is kept as a fallback but never matched live.
+      - "svg[aria-label='New post']"
+      - "role=link[name=\"New post\"]"
+      - "a[href='#']:has-text('Create')"
+      - "div[role='menuitem']:has-text('Create')"
+
+    # Only Post-related selectors are ever defined here. There is
+    # deliberately no story_option/reel_option selector anywhere in
+    # this file or in the module that reads it — Story and Reel cannot
+    # be selected even by accident because no code path searches for
+    # them. Confirmed live: the Create flyout only ever offers Post /
+    # Live video / Ad — there is no Story/Reel option to accidentally
+    # select from this entry point at all.
+    post_option:
+      # Confirmed: exactly 1 match, visible, clicking it opens the
+      # "Create new post" dialog. role=button[name="Post"] returned 0
+      # matches live — the flyout's "Post" row has no button/menuitem
+      # role at all (plain Meta atomic-CSS divs, same pattern already
+      # documented for comment_reader/dm_reader above) — kept as a
+      # harmless fallback in case Instagram adds proper roles later.
+      - "svg[aria-label='Post']"
+      - "role=button[name=\"Post\"]"
+      - "role=button[name=\"Post\" i]"
+      - "div[role='menuitem']:has-text('Post')"
+
+    dialog_container:
+      # Confirmed: exactly 1 match, visible, from the moment the
+      # "Create new post" dialog opens through the final Share screen.
+      - "div[role='dialog']"
+
+    file_input:
+      # Confirmed: exactly 1 match once the dialog has finished
+      # rendering (~2s after clicking post_option — see
+      # next_click_wait_ms/action timing notes below).
+      - "input[type='file']"
+
+    media_preview:
+      # Confirmed: the crop-screen preview renders as a CSS
+      # background-image on a <div> (xh8yej3), NOT an <img> or
+      # <canvas> — img[alt*='preview' i] / canvas both returned 0
+      # matches live. Kept as fallbacks in case a future Instagram
+      # build renders it differently.
+      - "div[style*='background-image']"
+      - "img[alt*='preview' i]"
+      - "div[aria-label*='Photo' i] img"
+      - "canvas"
+
+    unsupported_media_error:
+      # Untested — no unsupported-media case was exercised live (a
+      # valid PNG was used). Left as speculative placeholders.
+      - "text=file format"
+      - "div:has-text('not supported')"
+      - "div:has-text(\"couldn't be uploaded\")"
+
+    next_button:
+      # Confirmed: role=button[name="Next"] returns exactly one
+      # visible, enabled match on both the Crop screen and the
+      # Filter/Edit screen (2 transitions total to reach Details), and
+      # zero matches once the Details/caption screen is reached —
+      # exactly the "no more Next buttons" loop-termination signal
+      # InstagramFeedPreviewController.preview() relies on.
+      - "role=button[name=\"Next\"]"
+      - "role=button[name=\"Next\" i]"
+
+    caption_textbox:
+      # Confirmed: the real caption box is a bare
+      # div[contenteditable='true'] with NO aria-label at all —
+      # textarea[aria-label='Write a caption...'] and the
+      # aria-label*='caption' contenteditable variant both returned 0
+      # matches live. Scoped to dialog_container in code, where it is
+      # the sole contenteditable element once the Details screen is
+      # reached, so the bare selector is safe there.
+      - "div[contenteditable='true']"
+      - "textarea[aria-label='Write a caption...']"
+      - "div[contenteditable='true'][aria-label*='caption' i]"
+
+    # Exact accessible-name role query, same reasoning as
+    # reply_sender.post_button: an unquoted text=Share substring match
+    # would risk matching unrelated elements. Scoped in code to
+    # dialog_container first; only searched page-wide if that
+    # container cannot be located. Confirmed live: exactly 1 visible,
+    # enabled match on the Details/caption screen. LOCATED AND
+    # VERIFIED ONLY — src/publishing/instagram_feed_preview.py
+    # contains no code path that clicks this element.
+    share_button:
+      - "role=button[name=\"Share\"]"
+      - "role=button[name=\"Share\" i]"
+
+  output:
+    # Relative to the app root (10_apps/claude_runtime). Reuses
+    # config/publishing/publisher.yaml's paths.screenshots_dir /
+    # paths.logs_dir at runtime — this section only carries the
+    # selectors/timeouts that are specific to instagram.yaml.
+    screenshots_dir: "output/publishing/screenshots"
+    logs_dir: "output/publishing/logs"

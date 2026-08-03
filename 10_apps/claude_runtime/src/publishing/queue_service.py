@@ -125,3 +125,16 @@ class QueueService:
 def build_queue_service(config: PublisherConfig | None = None) -> QueueService:
     config = config or load_publisher_config()
     return QueueService(config.queue_path())
+
+
+def load_job_by_id(queue_path: str | Path, job_id: str) -> PublishJob | None:
+    """
+    Pure read-only lookup: loads the queue file and returns one job (or
+    None), without ever exposing a writable QueueService to the caller.
+
+    Intended for callers — such as the Phase 10B preview module — that
+    must never be able to write to publish_queue.json. Those callers
+    should call this function directly rather than constructing their
+    own QueueService instance.
+    """
+    return QueueService(queue_path).get(job_id)
