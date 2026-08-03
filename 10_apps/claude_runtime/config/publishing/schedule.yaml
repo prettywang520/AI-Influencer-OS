@@ -1,0 +1,20 @@
+version: "1.0"
+
+# AIKO OS — Publisher Framework (Phase 10A)
+#
+# Configurable default publish times per content slot. These are defaults
+# only — nothing reads this file to auto-schedule a job. A job is only
+# ever scheduled by an explicit `scheduler.py --schedule JOB_ID --at ISO`
+# call; these values exist so a future explicit --use-default-time style
+# flag (not built in Phase 10A) has somewhere to read from.
+
+timezone: "Asia/Tokyo"
+
+default_times:
+  instagram_feed: "09:00"
+  instagram_story_1: "08:00"
+  instagram_story_2: "12:00"
+  instagram_story_3: "16:00"
+  instagram_story_4: "20:00"
+  instagram_reel: "19:00"
+  threads_post: "10:00"

@@ -1,0 +1,81 @@
+version: "1.0"
+
+# AIKO OS — Publisher Framework (Phase 10A)
+#
+# Local-only job preparation, validation, queueing, approval, scheduling
+# and history for Instagram Feed / Stories / Reels and Threads. Nothing
+# in this config drives any browser automation or live publish call —
+# Phase 10A never opens Instagram/Threads.
+
+default_persona_id: "aiko"
+
+# IANA timezone used to interpret/validate --at ISO datetimes in the
+# scheduler and to render config/publishing/schedule.yaml defaults.
+timezone: "Asia/Tokyo"
+
+# Whether a validated ("pending_approval") job requires an explicit human
+# approval before it can be scheduled. Phase 10A always routes valid jobs
+# through pending_approval regardless of this flag; it is read by the
+# services as the documented policy switch for future phases.
+approval_required: true
+
+# Never write a queue/history/log file unless explicitly asked to.
+dry_run_default: false
+
+platform_limits:
+  instagram_feed:
+    caption_max_characters: 2200
+  instagram_story:
+    caption_max_characters: 2200
+  instagram_reel:
+    caption_max_characters: 2200
+  threads_post:
+    text_max_characters: 500
+
+required_fields:
+  instagram_feed:
+    - media_paths
+    - caption_text
+  instagram_story:
+    - media_paths
+  instagram_reel:
+    - media_paths
+    - caption_text
+  threads_post:
+    - threads_text
+
+allowed_media_extensions:
+  - ".png"
+  - ".jpg"
+  - ".jpeg"
+  - ".mp4"
+  - ".mov"
+
+paths:
+  # All relative to the app root (10_apps/claude_runtime).
+  queue_dir: "output/publishing/queues"
+  queue_filename: "publish_queue.json"
+  history_dir: "output/publishing/history"
+  logs_dir: "output/publishing/logs"
+
+  # Per-production-date source layout read from Phase 9 output
+  # (output/<date>/...). Do not invent files at these paths — the
+  # publisher only builds a job when the resolved file actually exists.
+  production_manifest_file: "production_manifest.json"
+  content_plan_file: "content_plan.json"
+  captions_dir: "captions"
+  hashtags_dir: "hashtags"
+
+  feed_caption_file: "captions/feed_caption.txt"
+  feed_hashtags_file: "hashtags/feed_hashtags.txt"
+  story_caption_template: "captions/story_{index}_caption.txt"
+  reel_caption_file: "captions/reel_caption.txt"
+  reel_hashtags_file: "hashtags/reel_hashtags.txt"
+  threads_text_file: "captions/threads_post.txt"
+  threads_hashtags_file: "hashtags/threads_hashtags.txt"
+
+  # Phase 9 produces per-scene reel clips (videos/reel_scenes/shot_0N.mp4),
+  # not one final Reel video. This is the conventional path a human/editor
+  # drops the merged, final Reel video at; the Reel publish job is only
+  # built when this exact file exists and is non-zero bytes.
+  reel_final_video_file: "videos/reel_final.mp4"
