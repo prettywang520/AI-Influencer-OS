@@ -620,6 +620,42 @@ class ValidationTests(unittest.TestCase):
         result = validate_timeline(timeline)
         self.assertFalse(result.passed)
 
+    def test_overlay_clip_empty_source_path_passes(self) -> None:
+        # Phase 11D.1 — OverlayClip has no media file by design (its
+        # payload is .content, not a source path), so an empty
+        # source_path is legal specifically for overlay-type clips.
+        timeline = _basic_valid_timeline()
+        overlay_track = TimelineTrack(
+            track_id="track_subtitles",
+            track_type=TrackType.SUBTITLE,
+            order=1,
+            clips=[
+                OverlayClip(
+                    clip_id="clip_overlay_01",
+                    track_id="track_subtitles",
+                    source_path="",
+                    start=0.0,
+                    end=2.0,
+                    duration_seconds=2.0,
+                    source_in=0.0,
+                    source_out=2.0,
+                    content="hello",
+                )
+            ],
+        )
+        timeline.tracks.append(overlay_track)
+        result = validate_timeline(timeline)
+        self.assertFalse(any("empty source_path" in e for e in result.errors))
+
+    def test_video_clip_empty_source_path_still_fails(self) -> None:
+        # Regression guard: VideoClip/AudioClip must still require a
+        # real source_path exactly as before this phase's change.
+        timeline = _basic_valid_timeline()
+        timeline.tracks[0].clips[0].source_path = ""
+        result = validate_timeline(timeline)
+        self.assertFalse(result.passed)
+        self.assertTrue(any("empty source_path" in e for e in result.errors))
+
 
 # ---------------------------------------------------------------------------
 # JSON round trip

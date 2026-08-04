@@ -1,0 +1,43 @@
+version: "1.0"
+
+# AIKO OS — Subtitle-Timeline Integration (Phase 11D.1)
+#
+# Adapter-only: attaches an already-validated SubtitleDocument to an
+# already-validated Timeline as one new subtitle TimelineTrack, using
+# only timeline_engine.py's and subtitle_engine.py's existing public
+# APIs. Never renders, never calls ffmpeg/ffprobe, never transcribes
+# speech, never modifies the source timeline.json/subtitles.json files.
+
+integration:
+  schema_version: "1.0"
+  default_track_id: subtitle-main
+  # Documentary only in this phase -- the adapter always places the new
+  # subtitle track immediately after the last video/audio track and
+  # before any overlay/metadata track; there is currently no second
+  # placement policy to choose between.
+  default_track_order_policy: after_audio_before_overlay
+  allow_multiple_subtitle_tracks: true
+  # When false, an existing target track is replaced automatically
+  # (still a clean replace, never a silent merge) without requiring
+  # --replace-existing on every call.
+  fail_on_existing_target_track: true
+  timeline_id_must_match: true
+  duration_tolerance_seconds: 0.001
+  # Preserving the base timeline_id is the only implemented/tested
+  # behavior in this phase -- overwriting it is explicitly out of scope
+  # (see the Phase 11D.1 plan for why).
+  preserve_base_timeline_id: true
+  generate_integrated_timeline_id: true
+
+mapping:
+  # Timeline Engine has no dedicated "subtitle" ClipType -- subtitle
+  # cues are mapped onto its existing, reserved OverlayClip shape
+  # (overlay_type="subtitle"), never a new clip type.
+  clip_type: overlay
+  preserve_style_metadata: true
+  preserve_unknown_metadata: true
+  require_safe_area_position: true
+
+output:
+  overwrite_requires_force: true
+  atomic_write: true

@@ -769,7 +769,12 @@ def validate_timeline(
                     f"supported in this phase (must be 'none')"
                 )
 
-            if not clip.source_path:
+            # OverlayClip has no media file by design (its payload is
+            # .content, not a source path) -- Phase 11D.1 attaches
+            # subtitle cues as OverlayClips with source_path="" rather
+            # than a fake filesystem path. VideoClip/AudioClip still
+            # require a real source_path exactly as before.
+            if clip.clip_type != ClipType.OVERLAY and not clip.source_path:
                 errors.append(f"clip {clip.clip_id} has an empty source_path")
 
             try:
