@@ -4,9 +4,6 @@ import argparse
 import json
 import re
 import subprocess
-import tempfile
-import time
-from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import date as date_cls
 from datetime import datetime, timezone
@@ -15,12 +12,25 @@ from typing import Any, Callable
 
 import yaml
 
+from . import video_engine
+
 # Phase 11A — Reel Builder Engine. Purely local: reads Reel scene clips
 # already produced by Phase 9 for one production date and concatenates
 # them into output/<date>/videos/reel_final.mp4 with ffmpeg. This module
 # never publishes anything, never opens a browser, never imports
 # Playwright, and never imports anything from src/publishing/ or
 # src/social/ — it only creates a video file on local disk.
+#
+# Phase 11A.3 refactor: command construction, execution, output
+# verification, concat manifest generation, and temporary-file cleanup
+# are now delegated to src/video_engine.py's VideoEngine (a generic,
+# reusable ffmpeg core). Reel Builder keeps everything Instagram-Reel-
+# specific: scene discovery/numbering validation, and the
+# resolution/FPS/audio-presence compatibility POLICY (independent
+# normalize_resolution/normalize_fps flags — a finer-grained control than
+# Video Engine's own single normalize_when_needed flag, so this module
+# constructs its own ConcatPlan from that policy decision rather than
+# re-deriving it through engine.build_concat_plan()).
 DISALLOWED_ACTIONS = (
     "publish",
     "share",
@@ -92,6 +102,14 @@ class MixedResolutionError(ReelBuilderError):
 
 class MixedFpsError(ReelBuilderError):
     """Raised when scene clips have different frame rates and normalize_fps is false."""
+
+
+class MixedAudioPresenceError(ReelBuilderError):
+    """
+    Raised when some scene clips have an audio stream and others do not.
+    Phase 11A.3 does not synthesize silence, so a mixed layout always
+    fails clearly rather than risking a desynchronized/invalid render.
+    """
 
 
 class ReelAlreadyExistsError(ReelBuilderError):
@@ -458,19 +476,41 @@ def validate_clip_consistency(probes: list[VideoProbe], config: BuilderConfig) -
 
 
 # ---------------------------------------------------------------------------
-# ffmpeg command construction
+# Video Engine adapters (Phase 11A.3)
 # ---------------------------------------------------------------------------
 
 
-def _escape_concat_path(path: Path) -> str:
-    # ffmpeg's concat demuxer file format: each line is `file '<path>'`,
-    # with literal single quotes inside the path escaped as '\''.
-    return str(path).replace("'", "'\\''")
+def _video_engine_config_from(config: BuilderConfig) -> video_engine.VideoEngineConfig:
+    """Adapts BuilderConfig's existing fields into a VideoEngineConfig —
+    Reel Builder does not load config/video/engine.yaml at all, keeping
+    its own CLI/config surface unchanged."""
+    return video_engine.VideoEngineConfig(
+        ffmpeg_binary=config.ffmpeg_binary,
+        ffmpeg_timeout_seconds=config.timeout_seconds,
+        ffprobe_binary=config.ffprobe_binary,
+        ffprobe_timeout_seconds=config.timeout_seconds,
+        default_video_codec=config.video_codec,
+        default_video_bitrate=config.video_bitrate,
+        default_fps=config.fps,
+        default_audio_codec=config.audio_codec,
+        faststart=True,
+        normalize_when_needed=True,
+        cleanup_temporary_files=True,
+    )
 
 
-def build_concat_list_content(clips: list[SceneClip]) -> str:
-    lines = [f"file '{_escape_concat_path(clip.path)}'" for clip in clips]
-    return "\n".join(lines) + "\n"
+def _video_input_from_probe(clip: SceneClip, probe: VideoProbe) -> video_engine.VideoInput:
+    return video_engine.VideoInput(
+        path=clip.path,
+        video=video_engine.VideoStreamSpec(
+            width=probe.width,
+            height=probe.height,
+            fps=probe.fps,
+            codec_name=probe.codec_name,
+        ),
+        audio=video_engine.AudioStreamSpec(present=probe.has_audio),
+        duration_seconds=probe.duration_seconds,
+    )
 
 
 def build_ffmpeg_command(
@@ -484,18 +524,40 @@ def build_ffmpeg_command(
     target_width: int | None = None,
     target_height: int | None = None,
 ) -> list[str]:
-    overwrite_flag = "-y" if force else "-n"
+    """
+    Compatibility wrapper (unchanged signature/behavior from Phase 11A):
+    builds the ffmpeg command for this clip set via VideoEngine's command
+    builders, without executing anything. Audio is always assumed present
+    for every clip here — this function has no way to know real
+    per-clip audio presence (it only receives clips/paths, not probes),
+    matching Phase 11A's own original unconditional behavior.
+    """
+    engine_config = _video_engine_config_from(config)
+    engine = video_engine.VideoEngine(engine_config)
+
+    inputs = [
+        video_engine.VideoInput(
+            path=clip.path,
+            video=video_engine.VideoStreamSpec(width=target_width, height=target_height, fps=config.fps),
+            audio=video_engine.AudioStreamSpec(present=True),
+        )
+        for clip in clips
+    ]
+    output = video_engine.VideoOutputSpec(
+        path=output_path,
+        video_codec=config.video_codec,
+        video_bitrate=config.video_bitrate,
+        fps=config.fps,
+        width=target_width,
+        height=target_height,
+        audio_codec=config.audio_codec,
+    )
 
     if not normalize:
-        return [
-            config.ffmpeg_binary,
-            overwrite_flag,
-            "-f", "concat",
-            "-safe", "0",
-            "-i", str(concat_list_path),
-            "-c", "copy",
-            str(output_path),
-        ]
+        plan = video_engine.ConcatPlan(
+            plan_type=video_engine.PLAN_LOSSLESS_COPY, inputs=inputs, output=output
+        )
+        return engine.build_lossless_concat_command(plan, concat_list_path, force=force)
 
     if not target_width or not target_height:
         raise ReelBuilderError(
@@ -503,37 +565,13 @@ def build_ffmpeg_command(
             "common resolution."
         )
 
-    command = [config.ffmpeg_binary, overwrite_flag]
-    for clip in clips:
-        command.extend(["-i", str(clip.path)])
-
-    video_labels = []
-    audio_labels = []
-    filter_parts = []
-
-    for stream_index in range(len(clips)):
-        video_label = f"v{stream_index}"
-        filter_parts.append(
-            f"[{stream_index}:v]scale={target_width}:{target_height},"
-            f"fps={config.fps},setsar=1[{video_label}]"
-        )
-        video_labels.append(f"[{video_label}]")
-        audio_labels.append(f"[{stream_index}:a]")
-
-    concat_inputs = "".join(
-        f"{v}{a}" for v, a in zip(video_labels, audio_labels)
+    plan = video_engine.ConcatPlan(
+        plan_type=video_engine.PLAN_NORMALIZED_RENDER,
+        inputs=inputs,
+        output=output,
+        target_video=video_engine.VideoStreamSpec(width=target_width, height=target_height),
     )
-    filter_parts.append(
-        f"{concat_inputs}concat=n={len(clips)}:v=1:a=1[outv][outa]"
-    )
-
-    command.extend(["-filter_complex", ";".join(filter_parts)])
-    command.extend(["-map", "[outv]", "-map", "[outa]"])
-    command.extend(["-c:v", config.video_codec, "-b:v", config.video_bitrate])
-    command.extend(["-c:a", config.audio_codec])
-    command.append(str(output_path))
-
-    return command
+    return engine.build_normalized_concat_command(plan, force=force)
 
 
 # ---------------------------------------------------------------------------
@@ -570,6 +608,11 @@ def _write_build_log(
     warnings: list[str],
     errors: list[str],
     result: str,
+    engine_plan_type: str | None = None,
+    engine_reasons: list[str] | None = None,
+    manifest_path: str | None = None,
+    temporary_files: list[str] | None = None,
+    cleanup_result: str | None = None,
 ) -> Path:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     finished_at = _now_iso()
@@ -586,6 +629,13 @@ def _write_build_log(
         "warnings": warnings,
         "errors": errors,
         "result": result,
+        # Phase 11A.3 additions — optional, additive only. Never removes
+        # any field a Phase 11A consumer of this log already relies on.
+        "engine_plan_type": engine_plan_type,
+        "engine_reasons": engine_reasons or [],
+        "manifest_path": manifest_path,
+        "temporary_files": temporary_files or [],
+        "cleanup_result": cleanup_result,
     }
 
     temporary_path = log_path.with_suffix(log_path.suffix + ".tmp")
@@ -635,6 +685,14 @@ def build_reel(
         probes = [probe_video(clip.path, config, runner=runner) for clip in clips]
         normalize = validate_clip_consistency(probes, config)
 
+        audio_flags = {probe.has_audio for probe in probes}
+        if len(audio_flags) > 1:
+            raise MixedAudioPresenceError(
+                "Scene clips have mixed audio presence (some have an audio "
+                "stream, some do not); refusing to guess — silence "
+                "synthesis is not implemented in Phase 11A.3."
+            )
+
         warnings: list[str] = []
         if not all(probe.has_audio for probe in probes):
             warnings.append(
@@ -643,50 +701,59 @@ def build_reel(
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with _temporary_concat_list(clips) as concat_list_path:
-            command = build_ffmpeg_command(
-                clips=clips,
-                output_path=output_path,
-                config=config,
-                concat_list_path=concat_list_path,
-                normalize=normalize,
-                force=force,
-                # When normalizing, every clip is scaled to the first
-                # clip's resolution — there is no separately configured
-                # target resolution, so the first clip acts as the
-                # reference frame, consistent with concatenating in
-                # scene-number order.
-                target_width=probes[0].width if normalize else None,
-                target_height=probes[0].height if normalize else None,
-            )
+        engine_config = _video_engine_config_from(config)
+        engine = video_engine.VideoEngine(engine_config, runner=runner)
 
-            render_start = time.monotonic()
-            result = runner(command, timeout=config.timeout_seconds)
-            render_duration_seconds = time.monotonic() - render_start
+        inputs = [_video_input_from_probe(clip, probe) for clip, probe in zip(clips, probes)]
+        output_spec = video_engine.VideoOutputSpec(
+            path=output_path,
+            video_codec=config.video_codec,
+            video_bitrate=config.video_bitrate,
+            fps=config.fps,
+            width=probes[0].width if normalize else None,
+            height=probes[0].height if normalize else None,
+            audio_codec=config.audio_codec,
+        )
 
-            if result.returncode != 0:
-                raise FfmpegRenderError(
-                    f"ffmpeg exited {result.returncode}: {result.stderr.strip()[-2000:]}"
-                )
+        # Reel Builder owns this plan-type decision itself (via
+        # validate_clip_consistency()'s independent normalize_resolution/
+        # normalize_fps flags) rather than re-deriving it through
+        # engine.build_concat_plan() — see the module docstring for why.
+        plan = video_engine.ConcatPlan(
+            plan_type=(
+                video_engine.PLAN_NORMALIZED_RENDER if normalize else video_engine.PLAN_LOSSLESS_COPY
+            ),
+            inputs=inputs,
+            output=output_spec,
+            reasons=(
+                ["reel_builder_resolution_or_fps_mismatch_normalized"]
+                if normalize
+                else ["reel_builder_compatible_for_stream_copy"]
+            ),
+            target_video=(
+                video_engine.VideoStreamSpec(width=probes[0].width, height=probes[0].height)
+                if normalize
+                else None
+            ),
+        )
 
-        if not output_path.is_file():
-            raise ReelBuildOutputMissingError(
-                f"ffmpeg reported success but no output file exists: {output_path}"
-            )
-
-        output_size_bytes = output_path.stat().st_size
-
-        if output_size_bytes == 0:
-            raise ReelBuildEmptyOutputError(f"Output file is zero bytes: {output_path}")
+        try:
+            engine_result = engine.execute_plan(plan, force=force)
+        except video_engine.FFmpegExecutionError as exc:
+            raise FfmpegRenderError(str(exc)) from exc
+        except video_engine.VideoOutputVerificationError as exc:
+            if not output_path.is_file():
+                raise ReelBuildOutputMissingError(str(exc)) from exc
+            raise ReelBuildEmptyOutputError(str(exc)) from exc
 
         build_result = BuildResult(
             production_date=date,
             scene_clips=[str(clip.path) for clip in clips],
             clip_durations=[probe.duration_seconds for probe in probes],
-            render_duration_seconds=render_duration_seconds,
-            ffmpeg_command=command,
+            render_duration_seconds=engine_result.duration_seconds,
+            ffmpeg_command=engine_result.command,
             output_path=str(output_path),
-            output_size_bytes=output_size_bytes,
+            output_size_bytes=engine_result.output_size_bytes,
             normalized=normalize,
             warnings=warnings,
         )
@@ -697,12 +764,17 @@ def build_reel(
             production_date=date,
             input_clips=[clip.to_dict() for clip in clips],
             clip_durations=build_result.clip_durations,
-            render_duration_seconds=render_duration_seconds,
-            ffmpeg_command=command,
-            output_size_bytes=output_size_bytes,
+            render_duration_seconds=engine_result.duration_seconds,
+            ffmpeg_command=engine_result.command,
+            output_size_bytes=engine_result.output_size_bytes,
             warnings=warnings,
             errors=[],
             result="success",
+            engine_plan_type=plan.plan_type,
+            engine_reasons=plan.reasons,
+            manifest_path=engine_result.manifest_path,
+            temporary_files=engine_result.temporary_files,
+            cleanup_result=engine_result.cleanup_result,
         )
 
         return build_result
@@ -722,14 +794,6 @@ def build_reel(
             result="failed",
         )
         raise
-
-
-@contextmanager
-def _temporary_concat_list(clips: list[SceneClip]):
-    with tempfile.TemporaryDirectory() as temp_dir_name:
-        concat_list_path = Path(temp_dir_name) / "concat_list.txt"
-        concat_list_path.write_text(build_concat_list_content(clips), encoding="utf-8")
-        yield concat_list_path
 
 
 # ---------------------------------------------------------------------------

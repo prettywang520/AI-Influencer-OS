@@ -1,0 +1,58 @@
+version: "1.0"
+
+# AIKO OS — FFmpeg Video Engine (Phase 11A.3)
+#
+# Reusable ffmpeg core: command construction, execution, concat planning,
+# manifest generation, and output verification. Owns ffmpeg/ffprobe
+# executable configuration and process execution only — no
+# Instagram-specific validation, publishing, upload, captions, hashtags,
+# music selection, subtitle generation, logo/outro design, or content
+# planning. See src/reel_builder.py for the Instagram-Reel-specific
+# caller that owns scene discovery and compatibility policy.
+
+ffmpeg:
+  binary: ffmpeg
+  timeout_seconds: 300
+  loglevel: error
+  hide_banner: true
+
+ffprobe:
+  binary: ffprobe
+  timeout_seconds: 30
+
+output:
+  overwrite_requires_force: true
+  verify_non_zero_bytes: true
+  temporary_directory_name: ".video_engine_tmp"
+  cleanup_temporary_files: true
+
+video:
+  default_codec: libx264
+  default_pixel_format: yuv420p
+  default_preset: medium
+  default_crf: 18
+  default_bitrate: 10M
+  default_fps: 30
+  default_width: 1080
+  default_height: 1920
+  faststart: true
+
+audio:
+  default_codec: aac
+  default_bitrate: 192k
+  default_sample_rate: 48000
+  default_channels: 2
+  # Reserved for a future phase — silence synthesis for clips missing
+  # audio is NOT implemented in Phase 11A.3. Mixed audio presence across
+  # concat inputs always produces a REJECTED plan (or a clear caller-side
+  # error), regardless of this flag's value.
+  insert_silence_when_missing: false
+
+concat:
+  prefer_stream_copy: true
+  normalize_when_needed: true
+  require_sequential_inputs: true
+  # Frame-rate values within this fraction of each other are treated as
+  # equal for LOSSLESS_COPY eligibility (mirrors media_inspector.yaml's
+  # variable_fps_tolerance / video/validator.yaml's fps.tolerance).
+  fps_tolerance: 0.05

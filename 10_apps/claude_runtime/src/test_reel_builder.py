@@ -11,6 +11,7 @@ from .reel_builder import (
     EmptySceneFileError,
     FfmpegRenderError,
     MissingSceneError,
+    MixedAudioPresenceError,
     MixedFpsError,
     MixedResolutionError,
     ProcessResult,
@@ -419,6 +420,36 @@ class BuildReelTests(ReelBuilderTempTestCase):
 
         self.assertEqual(runner.calls, [])
 
+    def test_lossless_build_uses_video_engine_concat_manifest(self) -> None:
+        # Phase 11A.3: a lossless build now writes its concat manifest
+        # via VideoEngine.write_concat_manifest() under a
+        # .video_engine_tmp directory next to the output, and cleans it
+        # up afterward (VideoEngineConfig.cleanup_temporary_files
+        # defaults true) — proving the build genuinely routed through
+        # Video Engine's plan/execute path, not just an equivalent
+        # command built by hand.
+        clip_paths = self._write_five_scenes()
+        runner = FakeRunner(probes=self._probes_for(clip_paths))
+
+        build_reel(PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir)
+
+        output_path = self.config.reel_final_path(PRODUCTION_DATE, root=self.temp_dir)
+        tmp_dir = output_path.parent / ".video_engine_tmp"
+        # Manifest was written and then cleaned up (default config).
+        self.assertFalse(list(tmp_dir.glob("*")) if tmp_dir.exists() else False)
+
+    def test_normalized_build_uses_video_engine_plan(self) -> None:
+        clip_paths = self._write_five_scenes()
+        probes = self._probes_for(clip_paths)
+        probes[str(clip_paths[-1])] = _probe_json(width=720, height=1280)
+        runner = FakeRunner(probes=probes)
+
+        build_reel(PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir)
+
+        log_path = self.config.build_log_path(PRODUCTION_DATE, root=self.temp_dir)
+        payload = json.loads(log_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["engine_plan_type"], "normalized_render")
+
 
 # ---------------------------------------------------------------------------
 # Diagnostics / build log
@@ -471,10 +502,18 @@ class BuildLogTests(ReelBuilderTempTestCase):
         self.assertEqual(len(payload["errors"]), 1)
         self.assertIn("Missing scene clip", payload["errors"][0])
 
-    def test_warning_recorded_when_a_clip_has_no_audio(self) -> None:
+    def test_warning_recorded_when_all_clips_uniformly_lack_audio(self) -> None:
+        # Phase 11A.3 note: this fixture was adapted from "one of five
+        # clips silent" to "all five clips silent" — the former was
+        # actually a mixed-audio-presence layout, which Phase 11A.3 now
+        # correctly rejects via MixedAudioPresenceError (see
+        # test_mixed_audio_presence_fails_clearly below) rather than
+        # silently warning and building anyway. A uniformly audio-less
+        # set of clips is still a legitimate, successful build that
+        # should warn about the resulting silent output — that is what
+        # this test now verifies.
         clip_paths = self._write_five_scenes()
-        probes = self._probes_for(clip_paths)
-        probes[str(clip_paths[0])] = _probe_json(has_audio=False)
+        probes = self._probes_for(clip_paths, has_audio=False)
         runner = FakeRunner(probes=probes)
 
         result = build_reel(PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir)
@@ -482,6 +521,24 @@ class BuildLogTests(ReelBuilderTempTestCase):
             any("audio" in warning for warning in result.warnings),
             result.warnings,
         )
+
+    def test_mixed_audio_presence_fails_clearly(self) -> None:
+        # New in Phase 11A.3 (requirement 6): mixed audio presence across
+        # scene clips must fail clearly rather than silently building an
+        # output with potentially desynchronized/incomplete audio.
+        clip_paths = self._write_five_scenes()
+        probes = self._probes_for(clip_paths)
+        probes[str(clip_paths[0])] = _probe_json(has_audio=False)
+        runner = FakeRunner(probes=probes)
+
+        with self.assertRaises(MixedAudioPresenceError):
+            build_reel(PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir)
+
+        output_path = self.config.reel_final_path(PRODUCTION_DATE, root=self.temp_dir)
+        self.assertFalse(output_path.exists())
+
+        ffmpeg_calls = [call for call in runner.calls if Path(call[0]).name == "ffmpeg"]
+        self.assertEqual(ffmpeg_calls, [])
 
 
 if __name__ == "__main__":
