@@ -869,3 +869,162 @@ story_preview:
     # instagram.yaml.
     screenshots_dir: "output/publishing/screenshots"
     logs_dir: "output/publishing/logs"
+
+# ---------------------------------------------------------------------------
+# Phase 10E.1 — Instagram Reels Publisher (PREVIEW ONLY)
+# ---------------------------------------------------------------------------
+#
+# Prepares one approved instagram_reel PublishJob completely — opens the
+# Reel composer (never Post/Story/Live), uploads the exact approved final
+# Reel video, waits out Instagram's processing state, advances through
+# Next transitions, verifies the cover and caption — then STOPS. The Share
+# button is located and verified only; src/publishing/instagram_reel_preview.py
+# contains no code path that clicks it, presses Enter, or otherwise submits
+# the Reel. See that module's DISALLOWED_ACTIONS and StructuralSafetyTests
+# for the structural proof.
+#
+# UNTESTED placeholder defaults below — Reel composition has not been
+# exercised live as of this writing (Phase 9 has never produced a final
+# Reel video in this repo, so live tuning could not proceed past the
+# missing-video check — see Phase 10E.1 requirement 21). Tune against a
+# real logged-in session using the before_upload/after_upload/processing/
+# ready/error screenshots and diagnostic log this module writes, the same
+# way feed_preview's selectors above were originally tuned. Phase 10D.1's
+# live diagnostics already found this account's Create flyout offers only
+# Post/Live video/Ad (no Story, no Reel either) — reel_option below will
+# very likely need a non-flyout route once actually tuned live.
+reel_preview:
+  timeouts:
+    action_click_timeout_ms: 5000
+    upload_settle_wait_ms: 3000
+    navigation_settle_wait_ms: 9000
+    create_menu_wait_ms: 1500
+    dialog_open_wait_ms: 2500
+    # Number of "Next" transitions the controller may click: initial
+    # video/crop screen -> trim/edit/filter screen -> final caption/
+    # details screen (up to 2 clicks, same upper-bound reasoning as
+    # feed_preview.max_next_transitions).
+    max_next_transitions: 2
+    next_click_wait_ms: 1200
+    caption_settle_wait_ms: 1500
+    # How often to re-check processing_indicator while waiting for
+    # Instagram to finish transcoding the uploaded video.
+    processing_poll_interval_ms: 2000
+    # Total time budget for the processing wait before failing safely
+    # with ReelProcessingTimeoutError. Reels are noticeably larger than a
+    # single Feed image, so this is deliberately generous.
+    processing_timeout_ms: 60000
+
+  selectors:
+    # date validated: UNTESTED
+    # page/screen: Instagram home feed, sidebar
+    # scope: page-wide
+    # exact or fallback: fallback — duplicated from feed_preview.create_button
+    #   as an independently tunable list rather than cross-referenced, same
+    #   independence pattern story_preview uses.
+    create_control:
+      - "svg[aria-label='New post']"
+      - "role=link[name=\"New post\"]"
+      - "a[href='#']:has-text('Create')"
+      - "div[role='menuitem']:has-text('Create')"
+
+    # date validated: UNTESTED
+    # page/screen: whatever menu appears immediately after create_control
+    #   is clicked
+    # scope: page-wide
+    # exact or fallback: fallback — speculative guesses only. Phase 10D.1's
+    #   live diagnostics already showed this account's Create flyout offers
+    #   only Post/Live video/Ad, so this list will likely need a different
+    #   entry point once actually tuned live. There is deliberately no
+    #   post_option/story_option selector anywhere in this section or read
+    #   by instagram_reel_preview.py, so Post/Story can never be chosen
+    #   even by accident from this entry point.
+    reel_option:
+      - "svg[aria-label='Reel']"
+      - "role=button[name=\"Reel\"]"
+      - "div[role='menuitem']:has-text('Reel')"
+
+    dialog_container:
+      - "div[role='dialog']"
+
+    file_input:
+      - "input[type='file']"
+
+    # date validated: UNTESTED
+    # page/screen: Reel composer, after video upload
+    # scope: composer root
+    # exact or fallback: fallback — Reels may render the uploaded video as
+    #   a <video> element, a canvas, a CSS background-image, or a blob:
+    #   src image, per requirement 9.
+    video_preview:
+      - "video"
+      - "canvas"
+      - "div[style*='background-image']"
+      - "img[src^='blob:']"
+
+    # date validated: UNTESTED — no unsupported-media case has been
+    #   exercised live (a valid approved Reel video is expected).
+    unsupported_media_error:
+      - "text=file format"
+      - "div:has-text('not supported')"
+      - "div:has-text(\"couldn't be uploaded\")"
+
+    # date validated: UNTESTED
+    # page/screen: Reel composer, immediately after video upload
+    # scope: composer root
+    # exact or fallback: fallback — guesses for Instagram's "processing/
+    #   transcoding" indicator. Absence of a match is treated as
+    #   "processing already finished," not an error, so an over-narrow
+    #   guess here only ever shortens the wait, never blocks it.
+    processing_indicator:
+      - "text=Processing"
+      - "div:has-text('Uploading')"
+      - "role=progressbar"
+      - "div[aria-label*='processing' i]"
+
+    # date validated: UNTESTED
+    # page/screen: initial video/crop, trim/edit/filter, and final
+    #   caption/details screens
+    # scope: composer root
+    next_button:
+      - "role=button[name=\"Next\"]"
+      - "role=button[name=\"Next\" i]"
+
+    # date validated: UNTESTED
+    # page/screen: final caption/details screen
+    # scope: composer root
+    # exact or fallback: fallback — guesses for the cover/thumbnail
+    #   preview region. Per requirement 11, a miss here is only ever a
+    #   warning, never a hard failure.
+    cover_preview:
+      - "div[aria-label*='cover' i]"
+      - "button:has-text('Edit cover')"
+      - "img[alt*='cover' i]"
+
+    # date validated: UNTESTED
+    # page/screen: final caption/details screen
+    # scope: composer root
+    # exact or fallback: fallback — same bare-contenteditable guess as
+    #   feed_preview.caption_textbox.
+    caption_textbox:
+      - "div[contenteditable='true']"
+      - "textarea[aria-label='Write a caption...']"
+      - "div[contenteditable='true'][aria-label*='caption' i]"
+
+    # date validated: UNTESTED
+    # page/screen: final caption/details screen
+    # scope: composer root
+    # exact or fallback: fallback — same exact accessible-name role query
+    #   as feed_preview.share_button. LOCATED AND VERIFIED ONLY —
+    #   src/publishing/instagram_reel_preview.py contains no code path
+    #   that clicks this element.
+    share_button:
+      - "role=button[name=\"Share\"]"
+      - "role=button[name=\"Share\" i]"
+
+  output:
+    # Relative to the app root (10_apps/claude_runtime). Reuses
+    # config/publishing/publisher.yaml's paths.screenshots_dir /
+    # paths.logs_dir at runtime, same as feed_preview/story_preview above.
+    screenshots_dir: "output/publishing/screenshots"
+    logs_dir: "output/publishing/logs"
