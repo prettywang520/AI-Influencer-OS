@@ -666,3 +666,76 @@ feed_preview:
     # selectors/timeouts that are specific to instagram.yaml.
     screenshots_dir: "output/publishing/screenshots"
     logs_dir: "output/publishing/logs"
+
+# ---------------------------------------------------------------------------
+# Phase 10C — Instagram Feed Manual Publish (REAL SEND — no longer a preview)
+# ---------------------------------------------------------------------------
+#
+# This section configures the one module in the publishing package that
+# actually clicks Share: src/publishing/instagram_feed_sender.py. It only
+# fires on an explicit --publish-approved JOB_ID --confirm invocation, for
+# a job whose status is exactly "approved", only after re-running every
+# check in feed_preview: above from scratch (see
+# InstagramFeedPreviewController._reach_share_ready, reused unmodified by
+# the sender — this section adds nothing that changes feed_preview:'s own
+# selectors). No batch publishing, no scheduled/automatic publishing, and
+# no retry-on-failure capability are configured or implemented anywhere
+# in this section.
+#
+# UNTESTED placeholder defaults below — no live Share click has been
+# performed as of this writing (Phase 10C requires a separate, explicit,
+# exact-phrase user authorization before the very first one). Tune
+# against the real post-click DOM using the after_share/verified/error
+# screenshots and diagnostic log this module writes, the same way every
+# other phase's first-draft selectors above were tuned.
+feed_sender:
+  timeouts:
+    share_click_timeout_ms: 5000
+    # Wait after clicking Share, before taking the after_share
+    # screenshot and running _verify_publish(). Single wait, no
+    # polling/retry loop — matches reply_sender.send_settle_wait_ms.
+    verification_wait_ms: 3000
+
+  selectors:
+    # date validated: UNTESTED (no live Share click yet)
+    # page/screen: Details/caption screen, immediately after Share is
+    #   clicked
+    # scope: page-wide (the compose dialog may already have closed by
+    #   the time this is checked, so it cannot be scoped to
+    #   dialog_container the way earlier selectors are)
+    # exact or fallback: fallback — untested substring/text guesses
+    # safety assumption: used only to ADD a positive verification
+    #   signal (see feed_sender verification_signals); a false miss
+    #   here just means fewer signals were found (more likely
+    #   "inconclusive", never itself a reason to treat a post as
+    #   published)
+    success_message:
+      - "text=Your post has been shared"
+      - "text=Post shared"
+
+    # date validated: UNTESTED
+    # page/screen: Details/caption screen or wherever Instagram lands
+    #   after a failed Share attempt
+    # scope: page-wide
+    # exact or fallback: fallback
+    # safety assumption: a match here is a HARD VETO — forces
+    #   publish_verified=False regardless of how many positive signals
+    #   were also found, so an over-broad match only ever makes the
+    #   result more conservative (inconclusive/failed), never a false
+    #   "published"
+    publish_error_message:
+      - "div:has-text('error')"
+      - "text=Something went wrong"
+      - "text=Please try again"
+
+    # date validated: UNTESTED
+    # page/screen: N/A (this is a URL substring, not a DOM selector)
+    # scope: page.url
+    # exact or fallback: exact substring Instagram is known to use for
+    #   real post permalinks (/p/<code>/), also used to parse
+    #   platform_post_id/platform_url when present
+    # safety assumption: only ever ADDS a positive signal or supplies
+    #   platform_post_id/platform_url — never itself sufficient (see
+    #   the >=2-signals rule), so a coincidental match cannot alone
+    #   flip a result to "published"
+    post_permalink_url_marker: "/p/"

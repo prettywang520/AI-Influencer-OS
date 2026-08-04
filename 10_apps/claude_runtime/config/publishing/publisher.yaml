@@ -60,6 +60,10 @@ paths:
   # Phase 10B — Instagram Feed Publisher (Preview Only). Diagnostic
   # screenshots only; never used to publish anything.
   screenshots_dir: "output/publishing/screenshots"
+  # Phase 10C — Instagram Feed Manual Publish. One lock file per
+  # in-flight/attempted send (see src/publishing/instagram_feed_sender.py
+  # PublishLock); a lock is never deleted once Share has been clicked.
+  locks_dir: "output/publishing/locks"
 
   # Per-production-date source layout read from Phase 9 output
   # (output/<date>/...). Do not invent files at these paths — the
@@ -82,3 +86,38 @@ paths:
   # drops the merged, final Reel video at; the Reel publish job is only
   # built when this exact file exists and is non-zero bytes.
   reel_final_video_file: "videos/reel_final.mp4"
+
+# ---------------------------------------------------------------------------
+# Phase 10C.5 — Publish Recovery & Audit
+# ---------------------------------------------------------------------------
+#
+# src/publishing/publish_recovery.py is read-only (--inspect, --list-stuck)
+# except for three explicit, --confirm-gated manual reconciliation actions
+# (--mark-published, --mark-failed, --clear-stale-lock). It never opens
+# Instagram and never clicks Share. All thresholds below are read from this
+# file — nothing is hardcoded in Python.
+recovery:
+  # A job sitting in status="publishing" longer than this is surfaced by
+  # --list-stuck (and status_service.py) as needing manual attention.
+  publishing_stuck_after_minutes: 15
+
+  # A publish lock must be at least this old, AND its pid must not be
+  # confirmed active on the local machine, before --clear-stale-lock will
+  # remove it. Recent locks and locks with a live owning process always
+  # refuse, regardless of --confirm.
+  lock_stale_after_minutes: 30
+
+  # Relative to the app root (10_apps/claude_runtime).
+  audit_dir: "output/publishing/audit"
+
+  # Documents the policy every mutating recovery command already enforces
+  # in code (--mark-published / --mark-failed / --clear-stale-lock all
+  # require --confirm unconditionally); kept as an explicit, readable
+  # config flag rather than an unwritten assumption.
+  require_confirm_for_mutations: true
+
+  # --mark-published refuses any platform_url that does not start with one
+  # of these. Only real Instagram Feed post/reel URL prefixes belong here.
+  allowed_instagram_url_patterns:
+    - "https://www.instagram.com/p/"
+    - "https://www.instagram.com/reel/"

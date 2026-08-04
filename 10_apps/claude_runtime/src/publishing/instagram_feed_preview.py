@@ -476,6 +476,29 @@ class _ElementLookup:
     disabled_candidate: bool = False
 
 
+@dataclass(slots=True)
+class _ShareReadyState:
+    """
+    Internal return value of _reach_share_ready(): everything a caller
+    needs either to build a result (preview()) or to proceed straight
+    to the single permitted Share click (instagram_feed_sender.py).
+    share_lookup.element is guaranteed non-None, unique, visible, and
+    enabled whenever this is returned — _reach_share_ready() raises
+    instead of returning otherwise.
+    """
+
+    login_status: str
+    media_path: str
+    dialog_root: Any
+    share_lookup: "_ElementLookup"
+    caption_verified: bool
+    existing_caption_text: str
+    final_caption_text: str
+    next_transitions: list[str]
+    media_preview_verified: bool
+    diagnostics: dict[str, Any]
+
+
 # ---------------------------------------------------------------------------
 # Controller
 # ---------------------------------------------------------------------------
@@ -700,6 +723,255 @@ class InstagramFeedPreviewController:
             "screenshots": {"before_upload": None, "after_upload": None, "ready": None},
         }
 
+    # -- shared: reach a verified, ready-to-share state --------------------
+
+    async def _reach_share_ready(
+        self,
+        page: Any,
+        job: PublishJob,
+        caption_result: FinalCaptionResult,
+        diagnostics: dict[str, Any],
+        *,
+        login_failure_screenshot_name: str,
+        before_upload_screenshot_name: str,
+        after_upload_screenshot_name: str,
+        final_screenshot_name: str,
+    ) -> _ShareReadyState:
+        """
+        Navigate to Instagram, verify login, open Create -> Post, upload
+        the exact approved media, advance through the crop/filter Next
+        transitions, fill and verify the caption, then locate and
+        verify (never click) the Share button.
+
+        Shared by InstagramFeedPreviewController.preview() (Phase 10B)
+        and InstagramFeedSenderController.preflight()/publish() (Phase
+        10C) so the caption-joining/upload/transition/Share-lookup
+        logic exists in exactly one place. This method only ever
+        *locates and verifies* Share — it has no code path that clicks
+        it; only instagram_feed_sender.py's publish() does that, using
+        the element this method returns.
+
+        Mutates diagnostics in place and returns a _ShareReadyState.
+        Raises a FeedPreviewError subclass on any failure; the caller
+        is responsible for its own log-writing and cleanup.
+        """
+        try:
+            await page.goto(
+                self.session.config.base_url,
+                timeout=self.session.config.navigation_timeout_ms,
+                wait_until="domcontentloaded",
+            )
+        except PlaywrightTimeoutError as exc:
+            raise FeedPreviewNavigationError(
+                f"Timed out opening Instagram: {exc}"
+            ) from exc
+        except Exception as exc:
+            raise FeedPreviewNavigationError(
+                f"Unable to open Instagram: {exc}"
+            ) from exc
+
+        await page.wait_for_timeout(self.feed_config.navigation_settle_wait_ms)
+
+        login_status, login_reason = await self._detect_login(page)
+        diagnostics["login_status"] = login_status
+
+        if login_status != "logged_in":
+            screenshot_path = await self._save_screenshot(
+                page, filename=login_failure_screenshot_name
+            )
+            diagnostics["screenshots"]["ready"] = screenshot_path
+            raise FeedPreviewLoginError(
+                "Instagram session is not logged_in "
+                f"(status={login_status}). Screenshot: {screenshot_path}"
+            )
+
+        create_control = await self._find_first(
+            page, self.feed_config.selectors.create_button
+        )
+
+        if create_control is None:
+            raise CreateControlNotFoundError(
+                "Could not locate the Create control."
+            )
+
+        await create_control.click(timeout=self.feed_config.action_click_timeout_ms)
+        diagnostics["create_control_found"] = True
+        await page.wait_for_timeout(self.feed_config.create_menu_wait_ms)
+
+        # Only ever searches for the Post option — no story/reel
+        # selector exists anywhere in this module or its config.
+        post_option = await self._find_first(
+            page, self.feed_config.selectors.post_option
+        )
+
+        if post_option is not None:
+            await post_option.click(timeout=self.feed_config.action_click_timeout_ms)
+            diagnostics["post_option_selected"] = True
+            # The "Create new post" dialog takes noticeably longer to
+            # fully mount (including its file input) than the Create
+            # flyout menu did — confirmed live 2026-08-03.
+            await page.wait_for_timeout(self.feed_config.dialog_open_wait_ms)
+
+        dialog_root = (
+            await self._find_first(page, self.feed_config.selectors.dialog_container)
+            or page
+        )
+
+        diagnostics["screenshots"]["before_upload"] = await self._save_screenshot(
+            page, filename=before_upload_screenshot_name
+        )
+
+        media_path = job.media_paths[0]
+
+        file_input = await self._find_first(
+            dialog_root, self.feed_config.selectors.file_input
+        )
+
+        if file_input is None:
+            raise MediaUploadError("Could not locate the media file input.")
+
+        try:
+            await file_input.set_input_files(media_path)
+        except Exception as exc:
+            raise MediaUploadError(
+                f"Failed to upload media file {media_path}: {exc}"
+            ) from exc
+
+        await page.wait_for_timeout(self.feed_config.upload_settle_wait_ms)
+
+        unsupported = await self._find_first(
+            dialog_root, self.feed_config.selectors.unsupported_media_error
+        )
+
+        if unsupported is not None:
+            unsupported_text = await self._composer_current_text(unsupported)
+            raise MediaUploadError(
+                f"Instagram reported unsupported media: {unsupported_text!r}"
+            )
+
+        media_preview = await self._find_first(
+            dialog_root, self.feed_config.selectors.media_preview
+        )
+        media_preview_verified = media_preview is not None
+
+        diagnostics["media_uploaded"] = True
+        diagnostics["media_preview_verified"] = media_preview_verified
+
+        diagnostics["screenshots"]["after_upload"] = await self._save_screenshot(
+            page, filename=after_upload_screenshot_name
+        )
+
+        if not media_preview_verified:
+            raise MediaPreviewNotVerifiedError(
+                "Media preview could not be verified after upload."
+            )
+
+        # -- crop/filter/details Next transitions ---------------------
+        next_transitions: list[str] = []
+
+        for step_index in range(self.feed_config.max_next_transitions):
+            lookup = await self._locate_unique_visible_enabled(
+                dialog_root, self.feed_config.selectors.next_button
+            )
+
+            if lookup.ambiguous:
+                raise AmbiguousNextButtonError(
+                    f"Found {lookup.candidate_count} ambiguous visible, "
+                    f"enabled Next button candidates at transition "
+                    f"{step_index + 1}; refusing to guess."
+                )
+
+            if lookup.element is None:
+                # No more Next buttons: assume the details screen has
+                # been reached. Not an error.
+                break
+
+            await lookup.element.click(timeout=self.feed_config.action_click_timeout_ms)
+            next_transitions.append(f"next_transition_{step_index + 1}")
+            await page.wait_for_timeout(self.feed_config.next_click_wait_ms)
+
+        diagnostics["next_transitions"] = next_transitions
+
+        # -- caption entry ---------------------------------------------
+        caption_box = await self._find_first(
+            dialog_root, self.feed_config.selectors.caption_textbox
+        )
+
+        if caption_box is None:
+            raise CaptionBoxNotFoundError(
+                "Could not locate the caption textbox."
+            )
+
+        diagnostics["caption_box_found"] = True
+
+        existing_caption_text = await self._composer_current_text(caption_box)
+
+        try:
+            await caption_box.fill(caption_result.final_caption)
+        except Exception:
+            await caption_box.click(timeout=2000)
+            await caption_box.type(caption_result.final_caption)
+
+        diagnostics["caption_filled"] = True
+
+        await page.wait_for_timeout(self.feed_config.caption_settle_wait_ms)
+
+        final_caption_text = await self._composer_current_text(caption_box)
+        caption_verified = final_caption_text == caption_result.final_caption
+        diagnostics["caption_verified"] = caption_verified
+
+        if not caption_verified:
+            raise CaptionVerificationMismatchError(
+                "Caption textbox value does not exactly match the "
+                "intended final caption after filling."
+            )
+
+        # -- Share button safety gate: locate + verify ONLY ------------
+        share_lookup = await self._locate_unique_visible_enabled(
+            dialog_root, self.feed_config.selectors.share_button
+        )
+
+        diagnostics["share_button_found"] = share_lookup.element is not None
+        diagnostics["share_button_enabled"] = share_lookup.enabled
+        # share_clicked / published are never mutated anywhere in this
+        # method: they stay False in whatever the caller reports.
+
+        diagnostics["screenshots"]["ready"] = await self._save_screenshot(
+            page, filename=final_screenshot_name
+        )
+
+        if share_lookup.ambiguous:
+            raise ShareButtonAmbiguousError(
+                f"Found {share_lookup.candidate_count} ambiguous "
+                "visible, enabled Share button candidates; refusing "
+                "to guess. Nothing was clicked."
+            )
+
+        if share_lookup.disabled_candidate:
+            raise ShareButtonDisabledError(
+                "The Share button was found but is not usable (not "
+                "visible and/or not enabled)."
+            )
+
+        if share_lookup.element is None:
+            raise ShareButtonNotFoundError(
+                "Could not find a unique, visible, enabled Share "
+                "button. Nothing was clicked."
+            )
+
+        return _ShareReadyState(
+            login_status=login_status,
+            media_path=media_path,
+            dialog_root=dialog_root,
+            share_lookup=share_lookup,
+            caption_verified=caption_verified,
+            existing_caption_text=existing_caption_text,
+            final_caption_text=final_caption_text,
+            next_transitions=next_transitions,
+            media_preview_verified=media_preview_verified,
+            diagnostics=diagnostics,
+        )
+
     # -- orchestration ----------------------------------------------------
 
     async def preview(
@@ -717,7 +989,6 @@ class InstagramFeedPreviewController:
         diagnostics = self._default_diagnostics()
         diagnostics["caption_length"] = caption_result.final_caption_length
         diagnostics["hashtags_appended"] = caption_result.hashtags_appended
-        error: str | None = None
 
         playwright, context = await self.session._open_context()
 
@@ -725,218 +996,34 @@ class InstagramFeedPreviewController:
             page = context.pages[0] if context.pages else await context.new_page()
 
             try:
-                await page.goto(
-                    self.session.config.base_url,
-                    timeout=self.session.config.navigation_timeout_ms,
-                    wait_until="domcontentloaded",
+                state = await self._reach_share_ready(
+                    page,
+                    job,
+                    caption_result,
+                    diagnostics,
+                    login_failure_screenshot_name=f"feed_preview_login_failed_{job.job_id}.png",
+                    before_upload_screenshot_name=f"feed_preview_before_upload_{job.job_id}.png",
+                    after_upload_screenshot_name=f"feed_preview_after_upload_{job.job_id}.png",
+                    final_screenshot_name=f"feed_preview_ready_{job.job_id}.png",
                 )
-            except PlaywrightTimeoutError as exc:
-                error = f"navigation_timeout: {exc}"
-                raise FeedPreviewNavigationError(
-                    f"Timed out opening Instagram: {exc}"
-                ) from exc
-            except Exception as exc:
-                error = f"navigation_failed: {exc}"
-                raise FeedPreviewNavigationError(
-                    f"Unable to open Instagram: {exc}"
-                ) from exc
-
-            await page.wait_for_timeout(self.feed_config.navigation_settle_wait_ms)
-
-            login_status, login_reason = await self._detect_login(page)
-            diagnostics["login_status"] = login_status
-
-            if login_status != "logged_in":
-                screenshot_path = await self._save_screenshot(
-                    page, filename=f"feed_preview_login_failed_{job.job_id}.png"
+            except FeedPreviewError as exc:
+                self._write_log(
+                    started_at=started_at,
+                    job=job,
+                    diagnostics=diagnostics,
+                    result="failed",
+                    error=str(exc),
                 )
-                error = f"login_lost: status={login_status} reason={login_reason}"
-                diagnostics["screenshots"]["ready"] = screenshot_path
-                raise FeedPreviewLoginError(
-                    "Instagram session is not logged_in "
-                    f"(status={login_status}). Screenshot: {screenshot_path}"
-                )
+                raise
 
-            create_control = await self._find_first(
-                page, self.feed_config.selectors.create_button
-            )
-
-            if create_control is None:
-                raise CreateControlNotFoundError(
-                    "Could not locate the Create control."
-                )
-
-            await create_control.click(timeout=self.feed_config.action_click_timeout_ms)
-            diagnostics["create_control_found"] = True
-            await page.wait_for_timeout(self.feed_config.create_menu_wait_ms)
-
-            # Only ever searches for the Post option — no story/reel
-            # selector exists anywhere in this module or its config.
-            post_option = await self._find_first(
-                page, self.feed_config.selectors.post_option
-            )
-
-            if post_option is not None:
-                await post_option.click(timeout=self.feed_config.action_click_timeout_ms)
-                diagnostics["post_option_selected"] = True
-                # The "Create new post" dialog takes noticeably longer
-                # to fully mount (including its file input) than the
-                # Create flyout menu did — confirmed live 2026-08-03.
-                await page.wait_for_timeout(self.feed_config.dialog_open_wait_ms)
-
-            dialog_root = (
-                await self._find_first(page, self.feed_config.selectors.dialog_container)
-                or page
-            )
-
-            diagnostics["screenshots"]["before_upload"] = await self._save_screenshot(
-                page, filename=f"feed_preview_before_upload_{job.job_id}.png"
-            )
-
-            media_path = job.media_paths[0]
-
-            file_input = await self._find_first(
-                dialog_root, self.feed_config.selectors.file_input
-            )
-
-            if file_input is None:
-                raise MediaUploadError("Could not locate the media file input.")
-
-            try:
-                await file_input.set_input_files(media_path)
-            except Exception as exc:
-                raise MediaUploadError(
-                    f"Failed to upload media file {media_path}: {exc}"
-                ) from exc
-
-            await page.wait_for_timeout(self.feed_config.upload_settle_wait_ms)
-
-            unsupported = await self._find_first(
-                dialog_root, self.feed_config.selectors.unsupported_media_error
-            )
-
-            if unsupported is not None:
-                unsupported_text = await self._composer_current_text(unsupported)
-                raise MediaUploadError(
-                    f"Instagram reported unsupported media: {unsupported_text!r}"
-                )
-
-            media_preview = await self._find_first(
-                dialog_root, self.feed_config.selectors.media_preview
-            )
-            media_preview_verified = media_preview is not None
-
-            diagnostics["media_uploaded"] = True
-            diagnostics["media_preview_verified"] = media_preview_verified
-
-            diagnostics["screenshots"]["after_upload"] = await self._save_screenshot(
-                page, filename=f"feed_preview_after_upload_{job.job_id}.png"
-            )
-
-            if not media_preview_verified:
-                raise MediaPreviewNotVerifiedError(
-                    "Media preview could not be verified after upload."
-                )
-
-            # -- crop/filter/details Next transitions ---------------------
-            next_transitions: list[str] = []
-
-            for step_index in range(self.feed_config.max_next_transitions):
-                lookup = await self._locate_unique_visible_enabled(
-                    dialog_root, self.feed_config.selectors.next_button
-                )
-
-                if lookup.ambiguous:
-                    raise AmbiguousNextButtonError(
-                        f"Found {lookup.candidate_count} ambiguous visible, "
-                        f"enabled Next button candidates at transition "
-                        f"{step_index + 1}; refusing to guess."
-                    )
-
-                if lookup.element is None:
-                    # No more Next buttons: assume the details screen has
-                    # been reached. Not an error.
-                    break
-
-                await lookup.element.click(timeout=self.feed_config.action_click_timeout_ms)
-                next_transitions.append(f"next_transition_{step_index + 1}")
-                await page.wait_for_timeout(self.feed_config.next_click_wait_ms)
-
-            diagnostics["next_transitions"] = next_transitions
-
-            # -- caption entry ---------------------------------------------
-            caption_box = await self._find_first(
-                dialog_root, self.feed_config.selectors.caption_textbox
-            )
-
-            if caption_box is None:
-                raise CaptionBoxNotFoundError(
-                    "Could not locate the caption textbox."
-                )
-
-            diagnostics["caption_box_found"] = True
-
-            existing_caption_text = await self._composer_current_text(caption_box)
-
-            try:
-                await caption_box.fill(caption_result.final_caption)
-            except Exception:
-                await caption_box.click(timeout=2000)
-                await caption_box.type(caption_result.final_caption)
-
-            diagnostics["caption_filled"] = True
-
-            await page.wait_for_timeout(self.feed_config.caption_settle_wait_ms)
-
-            final_caption_text = await self._composer_current_text(caption_box)
-            caption_verified = final_caption_text == caption_result.final_caption
-            diagnostics["caption_verified"] = caption_verified
-
-            if not caption_verified:
-                raise CaptionVerificationMismatchError(
-                    "Caption textbox value does not exactly match the "
-                    "intended final caption after filling."
-                )
-
-            # -- Share button safety gate: locate + verify ONLY ------------
-            share_lookup = await self._locate_unique_visible_enabled(
-                dialog_root, self.feed_config.selectors.share_button
-            )
-
-            diagnostics["share_button_found"] = share_lookup.element is not None
-            diagnostics["share_button_enabled"] = share_lookup.enabled
-            # share_clicked / published are never mutated anywhere: they
-            # are already False in _default_diagnostics() and stay False.
-
-            diagnostics["screenshots"]["ready"] = await self._save_screenshot(
-                page, filename=f"feed_preview_ready_{job.job_id}.png"
-            )
-
-            if share_lookup.ambiguous:
-                raise ShareButtonAmbiguousError(
-                    f"Found {share_lookup.candidate_count} ambiguous "
-                    "visible, enabled Share button candidates; refusing "
-                    "to guess. Nothing was clicked."
-                )
-
-            if share_lookup.disabled_candidate:
-                raise ShareButtonDisabledError(
-                    "The Share button was found but is not usable (not "
-                    "visible and/or not enabled)."
-                )
-
-            if share_lookup.element is None:
-                raise ShareButtonNotFoundError(
-                    "Could not find a unique, visible, enabled Share "
-                    "button. Nothing was clicked."
-                )
+            share_lookup = state.share_lookup
 
             result = FeedPreviewResult(
                 job_id=job.job_id,
                 production_date=job.production_date,
                 persona_id=job.persona_id,
-                login_status=login_status,
-                media_path=media_path,
+                login_status=state.login_status,
+                media_path=state.media_path,
                 caption_text=caption_result.caption_text,
                 hashtags_text=caption_result.hashtags_text,
                 final_caption=caption_result.final_caption,
@@ -946,14 +1033,14 @@ class InstagramFeedPreviewController:
                 create_control_found=diagnostics["create_control_found"],
                 post_option_selected=diagnostics["post_option_selected"],
                 media_uploaded=diagnostics["media_uploaded"],
-                media_filename=Path(media_path).name,
-                media_preview_verified=media_preview_verified,
-                next_transitions=next_transitions,
+                media_filename=Path(state.media_path).name,
+                media_preview_verified=state.media_preview_verified,
+                next_transitions=state.next_transitions,
                 caption_box_found=diagnostics["caption_box_found"],
                 caption_filled=diagnostics["caption_filled"],
-                caption_verified=caption_verified,
-                existing_caption_text=existing_caption_text,
-                final_caption_text=final_caption_text,
+                caption_verified=state.caption_verified,
+                existing_caption_text=state.existing_caption_text,
+                final_caption_text=state.final_caption_text,
                 location_applied="not_applied",
                 alt_text_applied="not_applied",
                 share_button_found=True,
@@ -974,17 +1061,6 @@ class InstagramFeedPreviewController:
             )
 
             return result
-
-        except FeedPreviewError as exc:
-            error = str(exc)
-            self._write_log(
-                started_at=started_at,
-                job=job,
-                diagnostics=diagnostics,
-                result="failed",
-                error=error,
-            )
-            raise
 
         finally:
             await context.close()

@@ -84,6 +84,21 @@ def default_publisher_config_path() -> Path:
 
 
 @dataclass(slots=True)
+class RecoveryConfig:
+    """
+    Phase 10C.5 — Publish Recovery & Audit thresholds/paths. Nothing in
+    this dataclass is a hardcoded value inside publish_recovery.py or
+    status_service.py; every threshold is read from here.
+    """
+
+    publishing_stuck_after_minutes: int = 15
+    lock_stale_after_minutes: int = 30
+    audit_dir: str = "output/publishing/audit"
+    require_confirm_for_mutations: bool = True
+    allowed_instagram_url_patterns: tuple[str, ...] = ()
+
+
+@dataclass(slots=True)
 class PublisherConfig:
     version: str = "1.0"
     default_persona_id: str = "aiko"
@@ -94,6 +109,7 @@ class PublisherConfig:
     required_fields: dict[str, list[str]] = field(default_factory=dict)
     allowed_media_extensions: tuple[str, ...] = ()
     paths: dict[str, str] = field(default_factory=dict)
+    recovery: RecoveryConfig = field(default_factory=RecoveryConfig)
 
     def resolve_path(self, key: str, default: str) -> Path:
         return app_root() / self.paths.get(key, default)
@@ -112,6 +128,12 @@ class PublisherConfig:
     def screenshots_dir(self) -> Path:
         return self.resolve_path("screenshots_dir", "output/publishing/screenshots")
 
+    def locks_dir(self) -> Path:
+        return self.resolve_path("locks_dir", "output/publishing/locks")
+
+    def audit_dir(self) -> Path:
+        return app_root() / self.recovery.audit_dir
+
 
 def load_publisher_config(config_path: str | Path | None = None) -> PublisherConfig:
     path = Path(config_path) if config_path else default_publisher_config_path()
@@ -121,6 +143,23 @@ def load_publisher_config(config_path: str | Path | None = None) -> PublisherCon
 
     with path.open("r", encoding="utf-8") as file:
         data = yaml.safe_load(file) or {}
+
+    recovery_section = data.get("recovery") or {}
+    recovery = RecoveryConfig(
+        publishing_stuck_after_minutes=int(
+            recovery_section.get("publishing_stuck_after_minutes", 15)
+        ),
+        lock_stale_after_minutes=int(
+            recovery_section.get("lock_stale_after_minutes", 30)
+        ),
+        audit_dir=str(recovery_section.get("audit_dir", "output/publishing/audit")),
+        require_confirm_for_mutations=bool(
+            recovery_section.get("require_confirm_for_mutations", True)
+        ),
+        allowed_instagram_url_patterns=tuple(
+            recovery_section.get("allowed_instagram_url_patterns") or []
+        ),
+    )
 
     return PublisherConfig(
         version=str(data.get("version", "1.0")),
@@ -134,6 +173,7 @@ def load_publisher_config(config_path: str | Path | None = None) -> PublisherCon
             str(ext).lower() for ext in (data.get("allowed_media_extensions") or [])
         ),
         paths=data.get("paths") or {},
+        recovery=recovery,
     )
 
 

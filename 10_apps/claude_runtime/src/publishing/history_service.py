@@ -17,8 +17,19 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "rejected",
         "scheduled",
         "cancelled",
+        "publishing_started",
         "failed",
         "published",
+        # Phase 10C.5 — Publish Recovery & Audit. manual_reconciled_*
+        # and lock_cleared are only ever written by
+        # src/publishing/publish_recovery.py, always behind --confirm.
+        # recovery_inspected is deliberately unused by default — the
+        # inspect CLI must stay read-only unless a future dedicated
+        # --audit-inspection flag opts into recording it.
+        "manual_reconciled_published",
+        "manual_reconciled_failed",
+        "lock_cleared",
+        "recovery_inspected",
     }
 )
 
@@ -164,6 +175,18 @@ class HistoryService:
             details=details,
         )
 
+    def record_publishing_started(
+        self, *, production_date: str, job_id: str, previous_status: str = "approved", details: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        return self.record_event(
+            production_date=production_date,
+            job_id=job_id,
+            event_type="publishing_started",
+            previous_status=previous_status,
+            new_status="publishing",
+            details=details,
+        )
+
     def record_cancelled(
         self, *, production_date: str, job_id: str, previous_status: str, details: dict[str, Any] | None = None
     ) -> dict[str, Any]:
@@ -197,6 +220,44 @@ class HistoryService:
             event_type="published",
             previous_status="publishing",
             new_status="published",
+            details=details,
+        )
+
+
+    def record_manual_reconciled_published(
+        self, *, production_date: str, job_id: str, previous_status: str, details: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        return self.record_event(
+            production_date=production_date,
+            job_id=job_id,
+            event_type="manual_reconciled_published",
+            previous_status=previous_status,
+            new_status="published",
+            details=details,
+        )
+
+    def record_manual_reconciled_failed(
+        self, *, production_date: str, job_id: str, previous_status: str, details: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        return self.record_event(
+            production_date=production_date,
+            job_id=job_id,
+            event_type="manual_reconciled_failed",
+            previous_status=previous_status,
+            new_status="failed",
+            details=details,
+        )
+
+    def record_lock_cleared(
+        self, *, production_date: str, job_id: str, status: str, details: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """status is unchanged by lock clearing — previous_status == new_status."""
+        return self.record_event(
+            production_date=production_date,
+            job_id=job_id,
+            event_type="lock_cleared",
+            previous_status=status,
+            new_status=status,
             details=details,
         )
 
