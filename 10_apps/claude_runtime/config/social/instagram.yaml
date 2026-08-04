@@ -739,3 +739,133 @@ feed_sender:
     #   the >=2-signals rule), so a coincidental match cannot alone
     #   flip a result to "published"
     post_permalink_url_marker: "/p/"
+
+# ---------------------------------------------------------------------------
+# Phase 10D.1 — Instagram Story Publisher (PREVIEW ONLY)
+# ---------------------------------------------------------------------------
+#
+# Prepares one approved instagram_story PublishJob completely — opens the
+# Story composer (an entry point separate from feed_preview.create_button/
+# post_option above), uploads the exact approved Story media, verifies it
+# is visibly rendered in the Story canvas — then STOPS. Every possible
+# final Story submission control (Your story / Share / Share to story /
+# Close Friends) is located and counted for verification only;
+# src/publishing/instagram_story_preview.py contains no code path that
+# clicks any of them, presses Enter, or otherwise submits the Story. See
+# that module's DISALLOWED_ACTIONS and StructuralSafetyTests for the
+# structural proof.
+#
+# UNTESTED placeholder defaults below — Story composition has not been
+# exercised live as of this writing. Tune against a real logged-in session
+# using the before_upload/after_upload/ready/error screenshots and
+# diagnostic log this module writes, the same way feed_preview's selectors
+# above were originally tuned.
+story_preview:
+  timeouts:
+    action_click_timeout_ms: 5000
+    upload_settle_wait_ms: 3000
+    # Reuses feed_preview's measured splash-screen delay (Instagram's
+    # desktop SPA sits on a loading screen for ~7.6s after
+    # domcontentloaded — see feed_preview.timeouts.navigation_settle_wait_ms
+    # above); no independent measurement has been taken for Stories yet.
+    navigation_settle_wait_ms: 9000
+    # Wait after clicking create_control, before searching for an
+    # intermediate story_option menu item (if one is configured/found).
+    create_menu_wait_ms: 1500
+    # Wait after the Story composer is expected to have opened, before
+    # searching for the file input.
+    dialog_open_wait_ms: 2500
+
+  selectors:
+    # date validated: UNTESTED
+    # page/screen: Instagram home feed, top of page
+    # scope: page-wide
+    # exact or fallback: fallback — speculative guesses only
+    # safety assumption: this is the SOLE entry point searched for opening
+    #   Story composition. feed_preview.create_button (the sidebar "+"
+    #   icon) already confirmed live 2026-08-03 that its own flyout offers
+    #   only Post/Live video/Ad, no Story item — so Story's real entry
+    #   point is expected to be the separate "Add to your story" avatar
+    #   ring shown at the top of the home feed, not the sidebar Create
+    #   icon. Corrected during live tuning (Phase 10D.1 requirement 16).
+    create_control:
+      - "div[aria-label='Add to your story' i]"
+      - "svg[aria-label='New story']"
+      - "svg[aria-label='Add story']"
+      - "canvas[aria-label*='story' i]"
+
+    # date validated: UNTESTED
+    # page/screen: whatever menu (if any) appears immediately after
+    #   create_control is clicked
+    # scope: page-wide
+    # exact or fallback: fallback
+    # safety assumption: an EMPTY list here (as configured now) means the
+    #   controller treats create_control as having opened the Story
+    #   composer directly, with no second selection step — this list is
+    #   only populated during live tuning if Instagram is found to show an
+    #   intermediate menu instead. There is deliberately no
+    #   post_option/reel_option selector anywhere in this section or read
+    #   by instagram_story_preview.py, so Post/Reel can never be chosen
+    #   even by accident from this entry point.
+    story_option: []
+
+    # date validated: UNTESTED
+    # page/screen: Story composer, immediately after create_control (and
+    #   story_option, if used) is clicked
+    # scope: story composer root (page-wide fallback if no composer
+    #   container can be scoped to)
+    file_input:
+      - "input[type='file']"
+
+    # date validated: UNTESTED
+    # page/screen: Story composer, after media upload
+    # scope: story composer root
+    # exact or fallback: fallback — Stories may render the uploaded media
+    #   as a canvas, a CSS background-image, a <video>, or an <img> with a
+    #   blob: src (see Phase 10D.1 requirement 7); every plausible
+    #   rendering is listed so the first real match wins.
+    media_canvas:
+      - "canvas"
+      - "div[style*='background-image']"
+      - "video"
+      - "img[src^='blob:']"
+      - "img"
+
+    # date validated: UNTESTED — no unsupported-media case has been
+    #   exercised live (a valid approved Story image/video is expected).
+    unsupported_media_error:
+      - "text=file format"
+      - "div:has-text('not supported')"
+      - "div:has-text(\"couldn't be uploaded\")"
+
+    # date validated: UNTESTED
+    # page/screen: Story composer, final ready-to-share screen
+    # scope: story composer root
+    # exact or fallback: fallback — exact accessible names guessed from
+    #   Instagram's known Story UI vocabulary; not yet confirmed live.
+    # safety assumption: every control below is LOCATED AND COUNTED ONLY.
+    #   instagram_story_preview.py contains no code path that clicks any
+    #   of them, presses Enter, evaluates JS to click, or force-clicks.
+    share_candidates:
+      your_story:
+        - "role=button[name=\"Your story\"]"
+        - "role=button[name=\"Your story\" i]"
+        - "div[role='button']:has-text('Your story')"
+      share:
+        - "role=button[name=\"Share\"]"
+        - "role=button[name=\"Share\" i]"
+      share_to_story:
+        - "role=button[name=\"Share to story\"]"
+        - "div[role='button']:has-text('Share to story')"
+      close_friends:
+        - "role=button[name=\"Close Friends\"]"
+        - "div[role='button']:has-text('Close Friends')"
+
+  output:
+    # Relative to the app root (10_apps/claude_runtime). Reuses
+    # config/publishing/publisher.yaml's paths.screenshots_dir /
+    # paths.logs_dir at runtime, exactly like feed_preview above — this
+    # section only carries the selectors/timeouts specific to
+    # instagram.yaml.
+    screenshots_dir: "output/publishing/screenshots"
+    logs_dir: "output/publishing/logs"
