@@ -1,0 +1,161 @@
+version: "1.0"
+
+# AIKO OS — Subtitle Engine (Phase 11D)
+#
+# Reusable, platform-neutral subtitle-track planner: creates, validates,
+# serializes, and exports subtitle tracks (JSON/SRT/ASS) that can later
+# be attached to Timeline Engine and rendered by a future overlay/render
+# pipeline. This phase plans subtitles only — no ffmpeg, no ffprobe, no
+# speech recognition/Whisper, no font downloads, no burning subtitles
+# into video, no publishing.
+
+subtitle:
+  schema_version: "1.0"
+  default_language: en
+  allow_overlaps: false
+  timing_tolerance_seconds: 0.001
+  minimum_cue_duration_seconds: 0.30
+  maximum_cue_duration_seconds: 7.00
+  minimum_gap_seconds: 0.00
+  frame_rate_snap_enabled: false
+  default_frame_rate: 30
+
+text:
+  trim_whitespace: true
+  normalize_repeated_spaces: true
+  preserve_explicit_line_breaks: true
+  maximum_characters_per_line: 32
+  maximum_lines_per_cue: 2
+  # "warning": exceeding maximum_lines_per_cue records a SubtitleWarning
+  # and keeps the full planned wrap. "fail": raises SubtitleValidationError
+  # instead. Either way, cue.text itself is never rewritten -- the
+  # planned wrap is metadata only (cue.metadata["planned_lines"]).
+  overflow_policy: warning
+  cjk_character_wrap: true
+
+canvas:
+  width: 1080
+  height: 1920
+  safe_area:
+    top: 160
+    bottom: 320
+    left: 80
+    right: 80
+  default_position:
+    x: 540
+    y: 1450
+
+# Each entry becomes a named SubtitleStyle preset (style_id = the key
+# below). The engine may reference these font-family names but never
+# downloads, bundles, or verifies installed fonts -- missing-font
+# validation is deferred to a future render phase.
+styles:
+  default:
+    font_family: Arial
+    font_size: 54
+    font_weight: 600
+    italic: false
+    underline: false
+    primary_color: "#FFFFFF"
+    outline_color: "#000000"
+    background_color: "#00000000"
+    outline_width: 3
+    shadow_depth: 1
+    alignment: bottom_center
+
+  luxury_editorial:
+    font_family: Helvetica Neue
+    font_size: 48
+    font_weight: 500
+    italic: false
+    underline: false
+    primary_color: "#FFFFFF"
+    outline_color: "#000000"
+    background_color: "#00000000"
+    outline_width: 2
+    shadow_depth: 1
+    alignment: bottom_center
+
+  minimal_white:
+    font_family: Helvetica Neue
+    font_size: 46
+    font_weight: 400
+    italic: false
+    underline: false
+    primary_color: "#FFFFFF"
+    outline_color: "#00000000"
+    background_color: "#00000000"
+    outline_width: 0
+    shadow_depth: 0
+    alignment: bottom_center
+
+  cinematic:
+    font_family: Georgia
+    font_size: 50
+    font_weight: 400
+    italic: true
+    underline: false
+    primary_color: "#F5F5F0"
+    outline_color: "#000000"
+    background_color: "#00000000"
+    outline_width: 2
+    shadow_depth: 2
+    alignment: bottom_center
+
+  travel_location:
+    font_family: Futura
+    font_size: 52
+    font_weight: 600
+    italic: false
+    underline: false
+    primary_color: "#FFFFFF"
+    outline_color: "#000000"
+    background_color: "#00000066"
+    outline_width: 2
+    shadow_depth: 1
+    alignment: bottom_center
+
+  dialogue:
+    font_family: Arial
+    font_size: 50
+    font_weight: 400
+    italic: false
+    underline: false
+    primary_color: "#FFFFFF"
+    outline_color: "#000000"
+    background_color: "#00000000"
+    outline_width: 3
+    shadow_depth: 1
+    alignment: bottom_center
+
+  japanese_caption:
+    font_family: Hiragino Sans
+    font_size: 50
+    font_weight: 600
+    italic: false
+    underline: false
+    primary_color: "#FFFFFF"
+    outline_color: "#000000"
+    background_color: "#00000000"
+    outline_width: 3
+    shadow_depth: 1
+    alignment: bottom_center
+
+  traditional_chinese_caption:
+    font_family: PingFang TC
+    font_size: 52
+    font_weight: 600
+    italic: false
+    underline: false
+    primary_color: "#FFFFFF"
+    outline_color: "#000000"
+    background_color: "#00000000"
+    outline_width: 3
+    shadow_depth: 1
+    alignment: bottom_center
+
+export:
+  overwrite_requires_force: true
+  atomic_write: true
+  srt_encoding: utf-8
+  ass_encoding: utf-8
