@@ -1,0 +1,76 @@
+version: "1.0"
+
+# AIKO OS — Music Mixer Engine (Phase 11B)
+#
+# Standalone, local audio-mixing engine: combines one rendered video with
+# one background-music file into a new video. Handles background music
+# only — no subtitles, logos, transitions, text overlays, voice
+# generation, music recommendation, music downloading, or platform
+# publishing. Never picks music automatically; a music file must always
+# be supplied explicitly by the caller.
+
+ffmpeg:
+  binary: ffmpeg
+  timeout_seconds: 300
+
+# Reused for all duration/stream-presence metadata via
+# src/media_inspector.py — this module never re-implements ffprobe
+# parsing. null means "use Media Inspector's own default config"
+# (config/media/inspector.yaml).
+media_inspector_config_path: null
+
+supported_extensions:
+  video:
+    - .mp4
+    - .mov
+    - .m4v
+  music:
+    - .mp3
+    - .wav
+    - .m4a
+    - .aac
+    - .flac
+  output:
+    - .mp4
+
+mix:
+  music_mode: loop
+  music_volume: 0.20
+  source_audio_volume: 1.00
+  ducking_mode: none
+  fade_in_seconds: 0.50
+  fade_out_seconds: 1.00
+  preserve_source_audio: true
+  trim_to_video_duration: true
+  shortest: true
+
+# ducking_mode: fixed applies exactly one constant attenuation multiplier
+# to the music volume whenever source audio is actually being mixed in
+# (case A — video has audio, preserve_source_audio is true). This is
+# SIMPLE FIXED ATTENUATION ONLY — it is not speech-aware sidechain
+# ducking, and there is no voice-activity detection anywhere in this
+# module.
+ducking:
+  fixed_music_multiplier: 0.55
+
+output:
+  audio_codec: aac
+  audio_bitrate: 192k
+  audio_sample_rate: 48000
+  audio_channels: 2
+  # Music Mixer only ever has one video input (never concatenates), so
+  # stream-copying the video track is always safe here. Setting this to
+  # false is not implemented in Phase 11B (there is no configured
+  # fallback video codec) and raises a clear config error rather than
+  # silently doing something undefined.
+  copy_video_stream: true
+  overwrite_requires_force: true
+  verify_non_zero_bytes: true
+  faststart: true
+
+diagnostics:
+  write_log: true
+  log_filename_suffix: "_music_mix_log.json"
+  # null means "write the log beside the output file". Set to a path to
+  # write every diagnostic log under one directory instead.
+  directory: null
