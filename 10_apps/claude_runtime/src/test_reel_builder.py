@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from . import music_mixer
 from .reel_builder import (
     BuilderConfig,
     DuplicateSceneError,
@@ -14,6 +15,7 @@ from .reel_builder import (
     MixedAudioPresenceError,
     MixedFpsError,
     MixedResolutionError,
+    MusicMixIntegrationError,
     ProcessResult,
     ReelAlreadyExistsError,
     ReelBuilderConfigError,
@@ -26,11 +28,14 @@ from .reel_builder import (
     default_builder_config_path,
     discover_scene_clips,
     load_builder_config,
+    parse_arguments,
     validate_clip_consistency,
     validate_date,
 )
 
 PRODUCTION_DATE = "2026-08-01"
+MODULE_PATH = Path(__file__).resolve().parent / "reel_builder.py"
+MODULE_SOURCE = MODULE_PATH.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +131,149 @@ class ReelBuilderTempTestCase(unittest.TestCase):
 
     def _probes_for(self, paths: list[Path], **kwargs) -> dict[str, dict]:
         return {str(path): _probe_json(**kwargs) for path in paths}
+
+
+# ---------------------------------------------------------------------------
+# Phase 11B.1 — Music integration fixtures
+#
+# media_inspector.inspect_file() (called internally by music_mixer.mix_music())
+# resolves paths before probing — unlike reel_builder's own probe_video(),
+# which does not — so probes used for the intermediate video / music file
+# must be keyed by the RESOLVED path (same macOS /var vs /private/var
+# symlink fix already applied in test_music_mixer.py), while scene-clip
+# probes stay keyed by the unresolved path as before.
+# ---------------------------------------------------------------------------
+
+
+def _music_video_probe_json(*, duration: float = 12.5, has_audio: bool = True) -> dict:
+    streams = [
+        {
+            "index": 0,
+            "codec_type": "video",
+            "codec_name": "h264",
+            "width": 1080,
+            "height": 1920,
+            "r_frame_rate": "30/1",
+            "avg_frame_rate": "30/1",
+            "duration": str(duration),
+            "pix_fmt": "yuv420p",
+            "tags": {},
+            "disposition": {"default": 1, "attached_pic": 0},
+        }
+    ]
+    if has_audio:
+        streams.append(
+            {
+                "index": 1,
+                "codec_type": "audio",
+                "codec_name": "aac",
+                "sample_rate": "48000",
+                "channels": 2,
+                "duration": str(duration),
+                "tags": {},
+                "disposition": {"default": 1, "attached_pic": 0},
+            }
+        )
+    return {
+        "streams": streams,
+        "format": {"format_name": "mov,mp4,m4a,3gp,3g2,mj2", "duration": str(duration), "bit_rate": "8000000"},
+        "chapters": [],
+    }
+
+
+def _music_track_probe_json(*, duration: float = 8.0) -> dict:
+    return {
+        "streams": [
+            {
+                "index": 0,
+                "codec_type": "audio",
+                "codec_name": "mp3",
+                "sample_rate": "44100",
+                "channels": 2,
+                "duration": str(duration),
+                "tags": {},
+                "disposition": {"default": 1, "attached_pic": 0},
+            }
+        ],
+        "format": {"format_name": "mp3", "duration": str(duration), "bit_rate": "192000"},
+        "chapters": [],
+    }
+
+
+def _fake_mix_plan(*, video_path: Path, music_path: Path, output_path: Path) -> music_mixer.MusicMixPlan:
+    return music_mixer.MusicMixPlan(
+        video_path=video_path,
+        music_path=music_path,
+        output_path=output_path,
+        video_duration_seconds=12.5,
+        music_duration_seconds=8.0,
+        video_has_audio=True,
+        music_mode=music_mixer.MusicMode.LOOP,
+        music_loop_required=True,
+        music_trim_required=False,
+        fade_in_seconds=0.5,
+        fade_out_seconds=1.0,
+        music_volume=0.2,
+        source_audio_volume=1.0,
+        ducking_mode=music_mixer.DuckingMode.NONE,
+        audio_decision=music_mixer.AudioMixDecision(case="mix_source_and_music", use_amix=True),
+        command=["ffmpeg", "-n", "-i", str(video_path), "-i", str(music_path), str(output_path)],
+        warnings=[],
+    )
+
+
+def _fake_mix_result(
+    *, video_path: Path, music_path: Path, output_path: Path, warnings: list[str] | None = None
+) -> music_mixer.MusicMixResult:
+    plan = _fake_mix_plan(video_path=video_path, music_path=music_path, output_path=output_path)
+    return music_mixer.MusicMixResult(
+        started_at="2026-08-04T00:00:00+00:00",
+        finished_at="2026-08-04T00:00:01+00:00",
+        duration_seconds=1.0,
+        video_path=str(video_path),
+        music_path=str(music_path),
+        output_path=str(output_path),
+        command=plan.command,
+        return_code=0,
+        stdout="",
+        stderr="",
+        output_exists=True,
+        output_size_bytes=999,
+        plan=plan,
+        warnings=warnings or [],
+        error=None,
+    )
+
+
+class FakeMixer:
+    """
+    Injectable stand-in for music_mixer.mix_music, matching its exact
+    call shape: (request, config, *, runner) -> MusicMixResult. Never
+    touches real ffmpeg/ffprobe/Media Inspector — used for tests that
+    only care about how reel_builder.build_reel() wires into Music
+    Mixer, not Music Mixer's own internals (those are covered by
+    test_music_mixer.py, unchanged).
+    """
+
+    def __init__(self, *, should_fail: bool = False, write_output: bool = True, output_bytes: bytes = b"fake-final-bytes") -> None:
+        self.should_fail = should_fail
+        self.write_output = write_output
+        self.output_bytes = output_bytes
+        self.calls: list[music_mixer.MusicMixRequest] = []
+
+    def __call__(self, request: music_mixer.MusicMixRequest, config: music_mixer.MusicMixerConfig, *, runner):
+        self.calls.append(request)
+
+        if self.should_fail:
+            raise music_mixer.FFmpegExecutionError("simulated mixer failure")
+
+        if self.write_output:
+            Path(request.output_path).parent.mkdir(parents=True, exist_ok=True)
+            Path(request.output_path).write_bytes(self.output_bytes)
+
+        return _fake_mix_result(
+            video_path=request.video_path, music_path=request.music_path, output_path=request.output_path
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -539,6 +687,579 @@ class BuildLogTests(ReelBuilderTempTestCase):
 
         ffmpeg_calls = [call for call in runner.calls if Path(call[0]).name == "ffmpeg"]
         self.assertEqual(ffmpeg_calls, [])
+
+
+# ---------------------------------------------------------------------------
+# Phase 11B.1 — Reel Builder Music Integration
+# ---------------------------------------------------------------------------
+
+
+class BackwardCompatibilityTests(ReelBuilderTempTestCase):
+    def test_no_music_keeps_original_final_output_path(self) -> None:
+        clip_paths = self._write_five_scenes()
+        runner = FakeRunner(probes=self._probes_for(clip_paths))
+        result = build_reel(PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir)
+        expected = str(self.config.reel_final_path(PRODUCTION_DATE, root=self.temp_dir))
+        self.assertEqual(result.output_path, expected)
+
+    def test_no_music_does_not_create_intermediate(self) -> None:
+        clip_paths = self._write_five_scenes()
+        runner = FakeRunner(probes=self._probes_for(clip_paths))
+        build_reel(PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir)
+        intermediate_path = self.config.reel_without_music_path(PRODUCTION_DATE, root=self.temp_dir)
+        self.assertFalse(intermediate_path.exists())
+
+    def test_no_music_never_calls_music_mixer(self) -> None:
+        clip_paths = self._write_five_scenes()
+        runner = FakeRunner(probes=self._probes_for(clip_paths))
+
+        def _fail_if_called(*args, **kwargs):
+            raise AssertionError("music_mixer_callable must not be called without --music")
+
+        result = build_reel(
+            PRODUCTION_DATE,
+            self.config,
+            runner=runner,
+            root=self.temp_dir,
+            music_mixer_callable=_fail_if_called,
+        )
+        self.assertIsNone(result.music_mix)
+
+    def test_old_positional_and_keyword_callers_still_work(self) -> None:
+        clip_paths = self._write_five_scenes()
+        runner = FakeRunner(probes=self._probes_for(clip_paths))
+        # Exactly the call shape every one of the original 34 tests uses —
+        # no new keyword required.
+        result = build_reel(PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir)
+        self.assertTrue(result.output_path)
+
+
+class CliTests(unittest.TestCase):
+    def test_music_flag_accepted(self) -> None:
+        args = parse_arguments(["--date", PRODUCTION_DATE, "--music", "/tmp/music.mp3"])
+        self.assertEqual(args.music, "/tmp/music.mp3")
+
+    def test_music_volume_accepted(self) -> None:
+        args = parse_arguments(["--date", PRODUCTION_DATE, "--music", "/tmp/m.mp3", "--music-volume", "0.5"])
+        self.assertEqual(args.music_volume, 0.5)
+
+    def test_source_audio_volume_accepted(self) -> None:
+        args = parse_arguments(
+            ["--date", PRODUCTION_DATE, "--music", "/tmp/m.mp3", "--source-audio-volume", "0.8"]
+        )
+        self.assertEqual(args.source_audio_volume, 0.8)
+
+    def test_music_mode_accepted(self) -> None:
+        args = parse_arguments(["--date", PRODUCTION_DATE, "--music", "/tmp/m.mp3", "--music-mode", "trim"])
+        self.assertEqual(args.music_mode, "trim")
+
+    def test_ducking_accepted(self) -> None:
+        args = parse_arguments(["--date", PRODUCTION_DATE, "--music", "/tmp/m.mp3", "--ducking", "fixed"])
+        self.assertEqual(args.ducking_mode, "fixed")
+
+    def test_fade_options_accepted(self) -> None:
+        args = parse_arguments(
+            [
+                "--date", PRODUCTION_DATE, "--music", "/tmp/m.mp3",
+                "--fade-in-seconds", "0.25", "--fade-out-seconds", "0.75",
+            ]
+        )
+        self.assertEqual(args.fade_in_seconds, 0.25)
+        self.assertEqual(args.fade_out_seconds, 0.75)
+
+    def test_keep_intermediate_accepted(self) -> None:
+        args = parse_arguments(["--date", PRODUCTION_DATE, "--music", "/tmp/m.mp3", "--keep-intermediate"])
+        self.assertTrue(args.keep_intermediate)
+
+    def test_music_specific_flag_without_music_fails(self) -> None:
+        with self.assertRaises(SystemExit):
+            parse_arguments(["--date", PRODUCTION_DATE, "--music-volume", "0.5"])
+
+    def test_keep_intermediate_without_music_fails(self) -> None:
+        with self.assertRaises(SystemExit):
+            parse_arguments(["--date", PRODUCTION_DATE, "--keep-intermediate"])
+
+    def test_invalid_music_mode_choice_fails(self) -> None:
+        with self.assertRaises(SystemExit):
+            parse_arguments(["--date", PRODUCTION_DATE, "--music", "/tmp/m.mp3", "--music-mode", "bogus"])
+
+    def test_invalid_ducking_choice_fails(self) -> None:
+        with self.assertRaises(SystemExit):
+            parse_arguments(["--date", PRODUCTION_DATE, "--music", "/tmp/m.mp3", "--ducking", "bogus"])
+
+
+class MusicFlowEndToEndTests(ReelBuilderTempTestCase):
+    """Uses the real, unmodified music_mixer.mix_music() end-to-end,
+    through a single shared FakeRunner — proves genuine wiring, not just
+    that reel_builder calls *something*."""
+
+    def _run_with_music(self, **build_kwargs):
+        clip_paths = self._write_five_scenes()
+        music_path = self.temp_dir / "music.mp3"
+        music_path.write_bytes(b"y" * 100)
+
+        intermediate_path = self.config.reel_without_music_path(PRODUCTION_DATE, root=self.temp_dir)
+        final_path = self.config.reel_final_path(PRODUCTION_DATE, root=self.temp_dir)
+
+        probes = self._probes_for(clip_paths)
+        probes[str(intermediate_path.resolve())] = _music_video_probe_json()
+        probes[str(music_path.resolve())] = _music_track_probe_json()
+
+        runner = FakeRunner(probes=probes)
+        result = build_reel(
+            PRODUCTION_DATE,
+            self.config,
+            runner=runner,
+            root=self.temp_dir,
+            music_path=music_path,
+            **build_kwargs,
+        )
+        return result, runner, intermediate_path, final_path, music_path
+
+    def test_music_path_renders_intermediate_first(self) -> None:
+        result, runner, intermediate_path, final_path, _music_path = self._run_with_music()
+        # ffmpeg is called twice: once for the scene concat (writing the
+        # intermediate), once for the mix (writing the final).
+        ffmpeg_calls = [c for c in runner.calls if Path(c[0]).name == "ffmpeg"]
+        self.assertEqual(len(ffmpeg_calls), 2)
+        self.assertEqual(Path(ffmpeg_calls[0][-1]), intermediate_path)
+        self.assertEqual(Path(ffmpeg_calls[1][-1]), final_path)
+
+    def test_final_output_exists_and_intermediate_cleaned_by_default(self) -> None:
+        result, _runner, intermediate_path, final_path, _music_path = self._run_with_music()
+        self.assertTrue(final_path.is_file())
+        self.assertFalse(intermediate_path.exists())
+        self.assertEqual(result.output_path, str(final_path))
+
+    def test_exact_music_path_passed_once(self) -> None:
+        _result, runner, _i, _f, music_path = self._run_with_music()
+        ffmpeg_calls = [c for c in runner.calls if Path(c[0]).name == "ffmpeg"]
+        mix_command = ffmpeg_calls[1]
+        self.assertEqual(mix_command.count(str(music_path)), 1)
+
+    def test_no_fallback_to_no_music_final_on_mixer_failure(self) -> None:
+        clip_paths = self._write_five_scenes()
+        music_path = self.temp_dir / "music.mp3"
+        music_path.write_bytes(b"y" * 100)
+
+        intermediate_path = self.config.reel_without_music_path(PRODUCTION_DATE, root=self.temp_dir)
+        final_path = self.config.reel_final_path(PRODUCTION_DATE, root=self.temp_dir)
+
+        probes = self._probes_for(clip_paths)
+        probes[str(intermediate_path.resolve())] = _music_video_probe_json()
+        # Deliberately no probe entry for the music file -> Media
+        # Inspector's ffprobe call fails -> mix_music() raises.
+        runner = FakeRunner(probes=probes)
+
+        with self.assertRaises(MusicMixIntegrationError):
+            build_reel(
+                PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir, music_path=music_path
+            )
+
+        self.assertFalse(final_path.exists())
+        self.assertTrue(intermediate_path.exists())
+
+
+class IntermediateHandlingTests(ReelBuilderTempTestCase):
+    def _run_with_fake_mixer(self, mixer: FakeMixer, **build_kwargs):
+        clip_paths = self._write_five_scenes()
+        music_path = self.temp_dir / "music.mp3"
+        music_path.write_bytes(b"y" * 100)
+        runner = FakeRunner(probes=self._probes_for(clip_paths))
+        result = build_reel(
+            PRODUCTION_DATE,
+            self.config,
+            runner=runner,
+            root=self.temp_dir,
+            music_path=music_path,
+            music_mixer_callable=mixer,
+            **build_kwargs,
+        )
+        intermediate_path = self.config.reel_without_music_path(PRODUCTION_DATE, root=self.temp_dir)
+        return result, intermediate_path
+
+    def test_success_deletes_intermediate_by_default(self) -> None:
+        _result, intermediate_path = self._run_with_fake_mixer(FakeMixer())
+        self.assertFalse(intermediate_path.exists())
+
+    def test_success_keeps_intermediate_with_keep_intermediate(self) -> None:
+        _result, intermediate_path = self._run_with_fake_mixer(FakeMixer(), keep_intermediate=True)
+        self.assertTrue(intermediate_path.exists())
+
+    def test_failure_preserves_intermediate(self) -> None:
+        clip_paths = self._write_five_scenes()
+        music_path = self.temp_dir / "music.mp3"
+        music_path.write_bytes(b"y" * 100)
+        runner = FakeRunner(probes=self._probes_for(clip_paths))
+        mixer = FakeMixer(should_fail=True)
+
+        with self.assertRaises(MusicMixIntegrationError):
+            build_reel(
+                PRODUCTION_DATE,
+                self.config,
+                runner=runner,
+                root=self.temp_dir,
+                music_path=music_path,
+                music_mixer_callable=mixer,
+            )
+
+        intermediate_path = self.config.reel_without_music_path(PRODUCTION_DATE, root=self.temp_dir)
+        self.assertTrue(intermediate_path.is_file())
+
+    def test_cleanup_only_removes_exact_intermediate(self) -> None:
+        unrelated = self.config.reel_final_path(PRODUCTION_DATE, root=self.temp_dir).parent
+        unrelated.mkdir(parents=True, exist_ok=True)
+        unrelated_file = unrelated / "unrelated_asset.mp4"
+        unrelated_file.write_bytes(b"do-not-touch")
+
+        self._run_with_fake_mixer(FakeMixer())
+
+        self.assertTrue(unrelated_file.is_file())
+        self.assertEqual(unrelated_file.read_bytes(), b"do-not-touch")
+
+    def test_cleanup_result_recorded_in_music_mix(self) -> None:
+        result, _intermediate_path = self._run_with_fake_mixer(FakeMixer())
+        self.assertFalse(result.music_mix["intermediate_retained"])
+
+    def test_cleanup_result_recorded_when_kept(self) -> None:
+        result, _intermediate_path = self._run_with_fake_mixer(FakeMixer(), keep_intermediate=True)
+        self.assertTrue(result.music_mix["intermediate_retained"])
+
+
+class FailureBehaviorTests(ReelBuilderTempTestCase):
+    def test_render_failure_prevents_mixer_call(self) -> None:
+        clip_paths = self._write_five_scenes()
+        music_path = self.temp_dir / "music.mp3"
+        music_path.write_bytes(b"y" * 100)
+        runner = FakeRunner(probes=self._probes_for(clip_paths), ffmpeg_should_fail=True)
+        mixer = FakeMixer()
+
+        with self.assertRaises(FfmpegRenderError):
+            build_reel(
+                PRODUCTION_DATE,
+                self.config,
+                runner=runner,
+                root=self.temp_dir,
+                music_path=music_path,
+                music_mixer_callable=mixer,
+            )
+
+        self.assertEqual(mixer.calls, [])
+
+    def test_mixer_failure_marks_build_failed(self) -> None:
+        clip_paths = self._write_five_scenes()
+        music_path = self.temp_dir / "music.mp3"
+        music_path.write_bytes(b"y" * 100)
+        runner = FakeRunner(probes=self._probes_for(clip_paths))
+        mixer = FakeMixer(should_fail=True)
+
+        with self.assertRaises(MusicMixIntegrationError):
+            build_reel(
+                PRODUCTION_DATE,
+                self.config,
+                runner=runner,
+                root=self.temp_dir,
+                music_path=music_path,
+                music_mixer_callable=mixer,
+            )
+
+    def test_mixer_failure_logs_error(self) -> None:
+        clip_paths = self._write_five_scenes()
+        music_path = self.temp_dir / "music.mp3"
+        music_path.write_bytes(b"y" * 100)
+        runner = FakeRunner(probes=self._probes_for(clip_paths))
+        mixer = FakeMixer(should_fail=True)
+
+        with self.assertRaises(MusicMixIntegrationError):
+            build_reel(
+                PRODUCTION_DATE,
+                self.config,
+                runner=runner,
+                root=self.temp_dir,
+                music_path=music_path,
+                music_mixer_callable=mixer,
+            )
+
+        log_path = self.config.build_log_path(PRODUCTION_DATE, root=self.temp_dir)
+        payload = json.loads(log_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["errors"], ["music mix failed", "simulated mixer failure"])
+        self.assertEqual(payload["music_mix"]["status"], "failed")
+
+    def test_mixer_failure_does_not_create_final_output(self) -> None:
+        clip_paths = self._write_five_scenes()
+        music_path = self.temp_dir / "music.mp3"
+        music_path.write_bytes(b"y" * 100)
+        runner = FakeRunner(probes=self._probes_for(clip_paths))
+        mixer = FakeMixer(should_fail=True)
+
+        with self.assertRaises(MusicMixIntegrationError):
+            build_reel(
+                PRODUCTION_DATE,
+                self.config,
+                runner=runner,
+                root=self.temp_dir,
+                music_path=music_path,
+                music_mixer_callable=mixer,
+            )
+
+        final_path = self.config.reel_final_path(PRODUCTION_DATE, root=self.temp_dir)
+        self.assertFalse(final_path.exists())
+
+
+class OverwriteTests(ReelBuilderTempTestCase):
+    def test_existing_final_refused_without_force(self) -> None:
+        clip_paths = self._write_five_scenes()
+        music_path = self.temp_dir / "music.mp3"
+        music_path.write_bytes(b"y" * 100)
+        final_path = self.config.reel_final_path(PRODUCTION_DATE, root=self.temp_dir)
+        final_path.parent.mkdir(parents=True, exist_ok=True)
+        final_path.write_bytes(b"existing-final")
+        runner = FakeRunner(probes=self._probes_for(clip_paths))
+
+        with self.assertRaises(ReelAlreadyExistsError):
+            build_reel(
+                PRODUCTION_DATE,
+                self.config,
+                runner=runner,
+                root=self.temp_dir,
+                music_path=music_path,
+                music_mixer_callable=FakeMixer(),
+            )
+        self.assertEqual(runner.calls, [])
+
+    def test_existing_intermediate_refused_without_force(self) -> None:
+        clip_paths = self._write_five_scenes()
+        music_path = self.temp_dir / "music.mp3"
+        music_path.write_bytes(b"y" * 100)
+        intermediate_path = self.config.reel_without_music_path(PRODUCTION_DATE, root=self.temp_dir)
+        intermediate_path.parent.mkdir(parents=True, exist_ok=True)
+        intermediate_path.write_bytes(b"stale-intermediate")
+        runner = FakeRunner(probes=self._probes_for(clip_paths))
+
+        with self.assertRaises(ReelAlreadyExistsError):
+            build_reel(
+                PRODUCTION_DATE,
+                self.config,
+                runner=runner,
+                root=self.temp_dir,
+                music_path=music_path,
+                music_mixer_callable=FakeMixer(),
+            )
+        self.assertEqual(runner.calls, [])
+
+    def test_force_propagates_to_render_and_mixer(self) -> None:
+        clip_paths = self._write_five_scenes()
+        music_path = self.temp_dir / "music.mp3"
+        music_path.write_bytes(b"y" * 100)
+        final_path = self.config.reel_final_path(PRODUCTION_DATE, root=self.temp_dir)
+        intermediate_path = self.config.reel_without_music_path(PRODUCTION_DATE, root=self.temp_dir)
+        final_path.parent.mkdir(parents=True, exist_ok=True)
+        final_path.write_bytes(b"existing-final")
+        intermediate_path.write_bytes(b"stale-intermediate")
+
+        runner = FakeRunner(probes=self._probes_for(clip_paths))
+        mixer = FakeMixer()
+
+        build_reel(
+            PRODUCTION_DATE,
+            self.config,
+            force=True,
+            runner=runner,
+            root=self.temp_dir,
+            music_path=music_path,
+            music_mixer_callable=mixer,
+        )
+
+        self.assertEqual(len(mixer.calls), 1)
+        self.assertTrue(mixer.calls[0].force)
+
+    def test_force_does_not_predelete_unrelated_files(self) -> None:
+        clip_paths = self._write_five_scenes()
+        music_path = self.temp_dir / "music.mp3"
+        music_path.write_bytes(b"y" * 100)
+        final_path = self.config.reel_final_path(PRODUCTION_DATE, root=self.temp_dir)
+        final_path.parent.mkdir(parents=True, exist_ok=True)
+        unrelated_file = final_path.parent / "unrelated.mp4"
+        unrelated_file.write_bytes(b"keep-me")
+
+        runner = FakeRunner(probes=self._probes_for(clip_paths))
+        build_reel(
+            PRODUCTION_DATE,
+            self.config,
+            force=True,
+            runner=runner,
+            root=self.temp_dir,
+            music_path=music_path,
+            music_mixer_callable=FakeMixer(),
+        )
+
+        self.assertEqual(unrelated_file.read_bytes(), b"keep-me")
+
+
+class BuildLogMusicTests(ReelBuilderTempTestCase):
+    def test_music_mix_disabled_without_music(self) -> None:
+        clip_paths = self._write_five_scenes()
+        runner = FakeRunner(probes=self._probes_for(clip_paths))
+        build_reel(PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir)
+
+        log_path = self.config.build_log_path(PRODUCTION_DATE, root=self.temp_dir)
+        payload = json.loads(log_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["music_mix"], {"enabled": False})
+
+    def test_music_mix_success_fields_written(self) -> None:
+        clip_paths = self._write_five_scenes()
+        music_path = self.temp_dir / "music.mp3"
+        music_path.write_bytes(b"y" * 100)
+        runner = FakeRunner(probes=self._probes_for(clip_paths))
+
+        build_reel(
+            PRODUCTION_DATE,
+            self.config,
+            runner=runner,
+            root=self.temp_dir,
+            music_path=music_path,
+            music_mixer_callable=FakeMixer(),
+        )
+
+        log_path = self.config.build_log_path(PRODUCTION_DATE, root=self.temp_dir)
+        payload = json.loads(log_path.read_text(encoding="utf-8"))
+        music_mix = payload["music_mix"]
+
+        self.assertTrue(music_mix["enabled"])
+        self.assertEqual(music_mix["status"], "success")
+        for field_name in (
+            "music_path",
+            "music_filename",
+            "music_volume",
+            "source_audio_volume",
+            "music_mode",
+            "ducking_mode",
+            "fade_in_seconds",
+            "fade_out_seconds",
+            "intermediate_path",
+            "intermediate_retained",
+            "mix_duration_seconds",
+            "diagnostic_log",
+            "warnings",
+        ):
+            self.assertIn(field_name, music_mix)
+
+    def test_music_mix_failure_fields_written(self) -> None:
+        clip_paths = self._write_five_scenes()
+        music_path = self.temp_dir / "music.mp3"
+        music_path.write_bytes(b"y" * 100)
+        runner = FakeRunner(probes=self._probes_for(clip_paths))
+
+        with self.assertRaises(MusicMixIntegrationError):
+            build_reel(
+                PRODUCTION_DATE,
+                self.config,
+                runner=runner,
+                root=self.temp_dir,
+                music_path=music_path,
+                music_mixer_callable=FakeMixer(should_fail=True),
+            )
+
+        log_path = self.config.build_log_path(PRODUCTION_DATE, root=self.temp_dir)
+        payload = json.loads(log_path.read_text(encoding="utf-8"))
+        music_mix = payload["music_mix"]
+        self.assertTrue(music_mix["enabled"])
+        self.assertEqual(music_mix["status"], "failed")
+        self.assertTrue(music_mix["intermediate_retained"])
+        self.assertIn("error", music_mix)
+
+    def test_original_build_log_fields_remain_present(self) -> None:
+        clip_paths = self._write_five_scenes()
+        music_path = self.temp_dir / "music.mp3"
+        music_path.write_bytes(b"y" * 100)
+        runner = FakeRunner(probes=self._probes_for(clip_paths))
+
+        build_reel(
+            PRODUCTION_DATE,
+            self.config,
+            runner=runner,
+            root=self.temp_dir,
+            music_path=music_path,
+            music_mixer_callable=FakeMixer(),
+        )
+
+        log_path = self.config.build_log_path(PRODUCTION_DATE, root=self.temp_dir)
+        payload = json.loads(log_path.read_text(encoding="utf-8"))
+        for field_name in (
+            "started_at",
+            "finished_at",
+            "production_date",
+            "input_clips",
+            "clip_durations",
+            "render_duration_seconds",
+            "ffmpeg_command",
+            "output_size_bytes",
+            "warnings",
+            "errors",
+            "result",
+        ):
+            self.assertIn(field_name, payload)
+        self.assertEqual(payload["result"], "success")
+
+    def test_warnings_preserved_in_music_mix(self) -> None:
+        clip_paths = self._write_five_scenes()
+        music_path = self.temp_dir / "music.mp3"
+        music_path.write_bytes(b"y" * 100)
+        runner = FakeRunner(probes=self._probes_for(clip_paths))
+        mixer = FakeMixer()
+
+        result = build_reel(
+            PRODUCTION_DATE,
+            self.config,
+            runner=runner,
+            root=self.temp_dir,
+            music_path=music_path,
+            music_mixer_callable=mixer,
+        )
+        self.assertEqual(result.music_mix["warnings"], [])
+
+    def test_diagnostic_log_path_recorded_when_available(self) -> None:
+        clip_paths = self._write_five_scenes()
+        music_path = self.temp_dir / "music.mp3"
+        music_path.write_bytes(b"y" * 100)
+        runner = FakeRunner(probes=self._probes_for(clip_paths))
+
+        result = build_reel(
+            PRODUCTION_DATE,
+            self.config,
+            runner=runner,
+            root=self.temp_dir,
+            music_path=music_path,
+            music_mixer_callable=FakeMixer(),
+        )
+        final_path = self.config.reel_final_path(PRODUCTION_DATE, root=self.temp_dir)
+        expected_suffix = "_music_mix_log.json"
+        self.assertTrue(result.music_mix["diagnostic_log"].endswith(f"{final_path.stem}{expected_suffix}"))
+
+
+class MusicIntegrationStructuralSafetyTests(unittest.TestCase):
+    def test_no_playwright_import(self) -> None:
+        for line in MODULE_SOURCE.splitlines():
+            stripped = line.strip()
+            self.assertFalse(stripped.startswith("import playwright"))
+            self.assertFalse(stripped.startswith("from playwright"))
+
+    def test_no_instagram_session_import(self) -> None:
+        for line in MODULE_SOURCE.splitlines():
+            stripped = line.strip()
+            self.assertFalse(stripped.startswith("from src.social"))
+            self.assertFalse(stripped.startswith("from .social"))
+        self.assertNotIn("InstagramSession(", MODULE_SOURCE)
+
+    def test_no_publishing_or_social_import(self) -> None:
+        for line in MODULE_SOURCE.splitlines():
+            stripped = line.strip()
+            self.assertFalse(stripped.startswith("from src.publishing"))
+            self.assertFalse(stripped.startswith("from .publishing"))
+
+    def test_no_automatic_music_selection(self) -> None:
+        for forbidden in ("random.choice", "glob(", "rglob(", "listdir(", "default_music"):
+            self.assertNotIn(forbidden, MODULE_SOURCE)
 
 
 if __name__ == "__main__":

@@ -12,7 +12,7 @@ from typing import Any, Callable
 
 import yaml
 
-from . import video_engine
+from . import media_inspector, music_mixer, video_engine
 
 # Phase 11A — Reel Builder Engine. Purely local: reads Reel scene clips
 # already produced by Phase 9 for one production date and concatenates
@@ -132,6 +132,16 @@ class ReelBuildEmptyOutputError(ReelBuilderError):
     """Raised when reel_final.mp4 was created but is zero bytes."""
 
 
+class MusicMixIntegrationError(ReelBuilderError):
+    """
+    Raised when --music is supplied and the injected Music Mixer
+    callable raises (music_mixer.MusicMixerError or
+    media_inspector.MediaInspectorError). The intermediate
+    reel_without_music.mp4 is always preserved when this happens — see
+    build_reel()'s music-enabled flow.
+    """
+
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -159,6 +169,16 @@ class BuilderConfig:
     ffprobe_binary: str = "ffprobe"
     timeout_seconds: int = 600
 
+    # Phase 11B.1 — Reel Builder Music Integration. Only read when
+    # --music is supplied; otherwise the original Phase 11A.3 behavior
+    # is unaffected by any of these fields.
+    integration_enabled: bool = True
+    intermediate_filename: str = "reel_without_music.mp4"
+    final_filename: str = "reel_final.mp4"
+    keep_intermediate_default: bool = False
+    preserve_intermediate_on_music_failure: bool = True
+    cleanup_intermediate_on_success: bool = True
+
     def reel_scenes_dir(self, date: str, *, root: str | Path | None = None) -> Path:
         base = Path(root) if root is not None else _runtime_root()
         return base / self.reel_scenes_dir_template.format(date=date)
@@ -166,6 +186,11 @@ class BuilderConfig:
     def reel_final_path(self, date: str, *, root: str | Path | None = None) -> Path:
         base = Path(root) if root is not None else _runtime_root()
         return base / self.reel_final_file_template.format(date=date)
+
+    def reel_without_music_path(self, date: str, *, root: str | Path | None = None) -> Path:
+        """Only meaningful when --music is supplied. Same directory as
+        reel_final_path(), different filename (config.intermediate_filename)."""
+        return self.reel_final_path(date, root=root).parent / self.intermediate_filename
 
     def build_log_path(self, date: str, *, root: str | Path | None = None) -> Path:
         base = Path(root) if root is not None else _runtime_root()
@@ -194,6 +219,7 @@ def load_builder_config(config_path: str | Path | None = None) -> BuilderConfig:
     rendering = raw.get("rendering") or {}
     paths_section = raw.get("paths") or {}
     ffmpeg_section = raw.get("ffmpeg") or {}
+    integration_section = raw.get("integration") or {}
 
     transition = str(rendering.get("transition", "none"))
     if transition != "none":
@@ -225,6 +251,18 @@ def load_builder_config(config_path: str | Path | None = None) -> BuilderConfig:
         ffmpeg_binary=str(ffmpeg_section.get("ffmpeg_binary", "ffmpeg")),
         ffprobe_binary=str(ffmpeg_section.get("ffprobe_binary", "ffprobe")),
         timeout_seconds=int(ffmpeg_section.get("timeout_seconds", 600)),
+        integration_enabled=bool(integration_section.get("enabled", True)),
+        intermediate_filename=str(
+            integration_section.get("intermediate_filename", "reel_without_music.mp4")
+        ),
+        final_filename=str(integration_section.get("final_filename", "reel_final.mp4")),
+        keep_intermediate_default=bool(integration_section.get("keep_intermediate_default", False)),
+        preserve_intermediate_on_music_failure=bool(
+            integration_section.get("preserve_intermediate_on_music_failure", True)
+        ),
+        cleanup_intermediate_on_success=bool(
+            integration_section.get("cleanup_intermediate_on_success", True)
+        ),
     )
 
     return config
@@ -590,6 +628,10 @@ class BuildResult:
     output_size_bytes: int
     normalized: bool
     warnings: list[str] = field(default_factory=list)
+    # Phase 11B.1 — always None for a no-music build (existing callers
+    # unaffected); a dict shaped per build_log.json's music_mix field
+    # when --music was supplied.
+    music_mix: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -613,6 +655,7 @@ def _write_build_log(
     manifest_path: str | None = None,
     temporary_files: list[str] | None = None,
     cleanup_result: str | None = None,
+    music_mix: dict[str, Any] | None = None,
 ) -> Path:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     finished_at = _now_iso()
@@ -636,6 +679,10 @@ def _write_build_log(
         "manifest_path": manifest_path,
         "temporary_files": temporary_files or [],
         "cleanup_result": cleanup_result,
+        # Phase 11B.1 addition — always present. {"enabled": false} for
+        # every build that did not request --music, so this never
+        # changes the log shape for existing (no-music) callers.
+        "music_mix": music_mix if music_mix is not None else {"enabled": False},
     }
 
     temporary_path = log_path.with_suffix(log_path.suffix + ".tmp")
@@ -650,6 +697,26 @@ def _write_build_log(
 # ---------------------------------------------------------------------------
 
 
+def _expected_music_diagnostic_log_path(
+    output_path: Path, music_config: "music_mixer.MusicMixerConfig"
+) -> str | None:
+    """
+    Mirrors music_mixer._diagnostic_log_path()'s own arithmetic (pure
+    path math over already-public MusicMixerConfig fields — not
+    validation or command-construction logic) so build_log.json can
+    record where Music Mixer wrote its own diagnostic log, without
+    modifying music_mixer.py to expose it directly.
+    """
+    if not music_config.write_log:
+        return None
+    directory = (
+        Path(music_config.diagnostics_directory)
+        if music_config.diagnostics_directory
+        else output_path.parent
+    )
+    return str(directory / f"{output_path.stem}{music_config.log_filename_suffix}")
+
+
 def build_reel(
     date: str,
     config: BuilderConfig,
@@ -657,6 +724,10 @@ def build_reel(
     force: bool = False,
     runner: SubprocessRunner = default_runner,
     root: str | Path | None = None,
+    music_path: str | Path | None = None,
+    music_overrides: dict[str, Any] | None = None,
+    keep_intermediate: bool | None = None,
+    music_mixer_callable: Callable[..., Any] | None = None,
 ) -> BuildResult:
     """
     Build output/<date>/videos/reel_final.mp4 from the Reel scene clips
@@ -666,18 +737,44 @@ def build_reel(
     root defaults to the real app root (10_apps/claude_runtime), what the
     CLI uses; tests pass an injected temp directory instead, the same
     testability pattern instagram_reel_preview.py's output_root uses.
+
+    Phase 11B.1: when music_path is None (the default), this function's
+    behavior is byte-for-byte identical to Phase 11A.3 — no intermediate
+    file is created and Music Mixer is never imported or invoked. When
+    music_path is given, scenes are rendered to an intermediate
+    reel_without_music.mp4 first, then music_mixer_callable (defaults to
+    music_mixer.mix_music — the real public API, never re-implemented
+    here) combines it with music_path into reel_final.mp4.
+    music_overrides is a plain dict of MusicMixRequest override fields
+    (music_volume/source_audio_volume/fade_in_seconds/fade_out_seconds/
+    music_mode/ducking_mode); any key absent or None falls back to Music
+    Mixer's own configured defaults.
     """
     started_at = _now_iso()
     validate_date(date)
 
+    music_enabled = music_path is not None
+    music_mixer_fn = music_mixer_callable or music_mixer.mix_music
+    overrides = music_overrides or {}
+
     scenes_dir = config.reel_scenes_dir(date, root=root)
-    output_path = config.reel_final_path(date, root=root)
+    final_output_path = config.reel_final_path(date, root=root)
+    intermediate_path = config.reel_without_music_path(date, root=root) if music_enabled else None
     log_path = config.build_log_path(date, root=root)
 
-    if output_path.exists() and not force:
-        raise ReelAlreadyExistsError(
-            f"{output_path} already exists; pass --force to overwrite."
-        )
+    render_target_path = intermediate_path if music_enabled else final_output_path
+
+    if not force:
+        if final_output_path.exists():
+            raise ReelAlreadyExistsError(
+                f"{final_output_path} already exists; pass --force to overwrite."
+            )
+        if music_enabled and intermediate_path.exists():
+            raise ReelAlreadyExistsError(
+                f"{intermediate_path} already exists; pass --force to overwrite."
+            )
+
+    music_mix_log_info: dict[str, Any] | None = {"enabled": True} if music_enabled else None
 
     try:
         clips = discover_scene_clips(scenes_dir, config.scene_count)
@@ -699,14 +796,14 @@ def build_reel(
                 "one_or_more_clips_missing_audio_stream_output_audio_may_be_incomplete"
             )
 
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        render_target_path.parent.mkdir(parents=True, exist_ok=True)
 
         engine_config = _video_engine_config_from(config)
         engine = video_engine.VideoEngine(engine_config, runner=runner)
 
         inputs = [_video_input_from_probe(clip, probe) for clip, probe in zip(clips, probes)]
         output_spec = video_engine.VideoOutputSpec(
-            path=output_path,
+            path=render_target_path,
             video_codec=config.video_codec,
             video_bitrate=config.video_bitrate,
             fps=config.fps,
@@ -742,9 +839,77 @@ def build_reel(
         except video_engine.FFmpegExecutionError as exc:
             raise FfmpegRenderError(str(exc)) from exc
         except video_engine.VideoOutputVerificationError as exc:
-            if not output_path.is_file():
+            if not render_target_path.is_file():
                 raise ReelBuildOutputMissingError(str(exc)) from exc
             raise ReelBuildEmptyOutputError(str(exc)) from exc
+
+        result_output_path = render_target_path
+        result_output_size = engine_result.output_size_bytes
+
+        if music_enabled:
+            music_request = music_mixer.MusicMixRequest(
+                video_path=intermediate_path,
+                music_path=Path(music_path),
+                output_path=final_output_path,
+                force=force,
+                music_volume=overrides.get("music_volume"),
+                source_audio_volume=overrides.get("source_audio_volume"),
+                fade_in_seconds=overrides.get("fade_in_seconds"),
+                fade_out_seconds=overrides.get("fade_out_seconds"),
+                music_mode=overrides.get("music_mode"),
+                ducking_mode=overrides.get("ducking_mode"),
+            )
+            music_config = music_mixer.load_music_mixer_config()
+
+            try:
+                mix_result = music_mixer_fn(music_request, music_config, runner=runner)
+            except (music_mixer.MusicMixerError, media_inspector.MediaInspectorError) as exc:
+                music_mix_log_info.update(
+                    {
+                        "status": "failed",
+                        "intermediate_path": str(intermediate_path),
+                        "intermediate_retained": True,
+                        "error": str(exc),
+                    }
+                )
+                raise MusicMixIntegrationError(str(exc)) from exc
+
+            keep_intermediate_effective = (
+                keep_intermediate if keep_intermediate is not None else config.keep_intermediate_default
+            )
+
+            if keep_intermediate_effective or not config.cleanup_intermediate_on_success:
+                intermediate_cleanup = "retained"
+            else:
+                try:
+                    intermediate_path.unlink()
+                    intermediate_cleanup = "cleaned"
+                except OSError:
+                    intermediate_cleanup = "retained"
+
+            music_mix_log_info.update(
+                {
+                    "music_path": str(music_path),
+                    "music_filename": Path(music_path).name,
+                    "music_volume": mix_result.plan.music_volume,
+                    "source_audio_volume": mix_result.plan.source_audio_volume,
+                    "music_mode": mix_result.plan.music_mode,
+                    "ducking_mode": mix_result.plan.ducking_mode,
+                    "fade_in_seconds": mix_result.plan.fade_in_seconds,
+                    "fade_out_seconds": mix_result.plan.fade_out_seconds,
+                    "intermediate_path": str(intermediate_path),
+                    "intermediate_retained": intermediate_cleanup == "retained",
+                    "status": "success",
+                    "mix_duration_seconds": mix_result.duration_seconds,
+                    "diagnostic_log": _expected_music_diagnostic_log_path(
+                        final_output_path, music_config
+                    ),
+                    "warnings": mix_result.warnings,
+                }
+            )
+
+            result_output_path = final_output_path
+            result_output_size = mix_result.output_size_bytes
 
         build_result = BuildResult(
             production_date=date,
@@ -752,10 +917,11 @@ def build_reel(
             clip_durations=[probe.duration_seconds for probe in probes],
             render_duration_seconds=engine_result.duration_seconds,
             ffmpeg_command=engine_result.command,
-            output_path=str(output_path),
-            output_size_bytes=engine_result.output_size_bytes,
+            output_path=str(result_output_path),
+            output_size_bytes=result_output_size,
             normalized=normalize,
             warnings=warnings,
+            music_mix=music_mix_log_info,
         )
 
         _write_build_log(
@@ -766,7 +932,7 @@ def build_reel(
             clip_durations=build_result.clip_durations,
             render_duration_seconds=engine_result.duration_seconds,
             ffmpeg_command=engine_result.command,
-            output_size_bytes=engine_result.output_size_bytes,
+            output_size_bytes=result_output_size,
             warnings=warnings,
             errors=[],
             result="success",
@@ -775,11 +941,17 @@ def build_reel(
             manifest_path=engine_result.manifest_path,
             temporary_files=engine_result.temporary_files,
             cleanup_result=engine_result.cleanup_result,
+            music_mix=music_mix_log_info,
         )
 
         return build_result
 
     except ReelBuilderError as exc:
+        if isinstance(exc, MusicMixIntegrationError):
+            errors = ["music mix failed", str(exc)]
+        else:
+            errors = [str(exc)]
+
         _write_build_log(
             log_path=log_path,
             started_at=started_at,
@@ -790,8 +962,9 @@ def build_reel(
             ffmpeg_command=None,
             output_size_bytes=None,
             warnings=[],
-            errors=[str(exc)],
+            errors=errors,
             result="failed",
+            music_mix=music_mix_log_info,
         )
         raise
 
@@ -819,10 +992,53 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Overwrite an existing reel_final.mp4.",
+        help="Overwrite an existing reel_final.mp4 (and intermediate, if --music is used).",
     )
 
-    return parser.parse_args(argv)
+    # Phase 11B.1 — optional Music Mixer integration. Absent by default,
+    # so the original Phase 11A.3 CLI/behavior is unaffected unless
+    # --music is explicitly supplied. There is no default/automatic
+    # music selection anywhere — a music file must always be named
+    # explicitly.
+    parser.add_argument(
+        "--music",
+        default=None,
+        help="Path to a background-music file. Optional — omit for the original no-music behavior.",
+    )
+    parser.add_argument("--music-volume", dest="music_volume", type=float, default=None)
+    parser.add_argument("--source-audio-volume", dest="source_audio_volume", type=float, default=None)
+    parser.add_argument("--music-mode", dest="music_mode", choices=music_mixer.MusicMode.ALL, default=None)
+    parser.add_argument("--ducking", dest="ducking_mode", choices=music_mixer.DuckingMode.ALL, default=None)
+    parser.add_argument("--fade-in-seconds", dest="fade_in_seconds", type=float, default=None)
+    parser.add_argument("--fade-out-seconds", dest="fade_out_seconds", type=float, default=None)
+    parser.add_argument(
+        "--keep-intermediate",
+        dest="keep_intermediate",
+        action="store_true",
+        help="Retain reel_without_music.mp4 after a successful music mix (requires --music).",
+    )
+
+    arguments = parser.parse_args(argv)
+
+    music_specific_flags_set = any(
+        (
+            arguments.music_volume is not None,
+            arguments.source_audio_volume is not None,
+            arguments.music_mode is not None,
+            arguments.ducking_mode is not None,
+            arguments.fade_in_seconds is not None,
+            arguments.fade_out_seconds is not None,
+            arguments.keep_intermediate,
+        )
+    )
+
+    if music_specific_flags_set and not arguments.music:
+        parser.error(
+            "--music-volume/--source-audio-volume/--music-mode/--ducking/"
+            "--fade-in-seconds/--fade-out-seconds/--keep-intermediate require --music."
+        )
+
+    return arguments
 
 
 def _print_result(result: BuildResult) -> None:
@@ -838,15 +1054,39 @@ def _print_result(result: BuildResult) -> None:
     print(f"output path:             {result.output_path}")
     print(f"output size (bytes):     {result.output_size_bytes}")
     print(f"warnings:                {result.warnings}")
+    if result.music_mix is not None:
+        print(f"music mix:               {result.music_mix}")
     print()
 
 
 def main(argv: list[str] | None = None) -> None:
     arguments = parse_arguments(argv)
 
+    music_overrides = {
+        "music_volume": arguments.music_volume,
+        "source_audio_volume": arguments.source_audio_volume,
+        "fade_in_seconds": arguments.fade_in_seconds,
+        "fade_out_seconds": arguments.fade_out_seconds,
+        "music_mode": arguments.music_mode,
+        "ducking_mode": arguments.ducking_mode,
+    }
+
+    # store_true always yields a concrete bool (never None), so only
+    # ever pass an explicit True through — otherwise config's own
+    # keep_intermediate_default would be permanently overridden by an
+    # implicit False on every run.
+    keep_intermediate = True if arguments.keep_intermediate else None
+
     try:
         config = load_builder_config(arguments.config)
-        result = build_reel(arguments.date, config, force=arguments.force)
+        result = build_reel(
+            arguments.date,
+            config,
+            force=arguments.force,
+            music_path=arguments.music,
+            music_overrides=music_overrides,
+            keep_intermediate=keep_intermediate,
+        )
     except ReelBuilderError as exc:
         print(f"[ReelBuilder] {exc}")
         raise SystemExit(1) from exc

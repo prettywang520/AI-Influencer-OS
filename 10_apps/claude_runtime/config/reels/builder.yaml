@@ -55,3 +55,26 @@ ffmpeg:
   # Wall-clock budget for a single ffmpeg/ffprobe subprocess call before
   # it is killed and treated as a failure.
   timeout_seconds: 600
+
+# ---------------------------------------------------------------------------
+# Phase 11B.1 — Reel Builder Music Integration
+# ---------------------------------------------------------------------------
+#
+# Only takes effect when --music is supplied on the CLI (or music_path is
+# passed to build_reel()). Without --music, none of this is read and
+# behavior is identical to Phase 11A.3. See src/music_mixer.py for the
+# actual audio-mixing engine this integration calls — Reel Builder never
+# duplicates its validation or ffmpeg command construction.
+integration:
+  enabled: true
+  # Filename only (relative to the same output/<date>/videos/ directory
+  # reel_final_file_template already resolves to).
+  intermediate_filename: "reel_without_music.mp4"
+  final_filename: "reel_final.mp4"
+  keep_intermediate_default: false
+  # Read into config for documentation/future-tuning, but Phase 11B.1's
+  # own code always preserves the intermediate file when Music Mixer
+  # fails, regardless of this value — matching the "always preserve for
+  # diagnosis" requirement unconditionally.
+  preserve_intermediate_on_music_failure: true
+  cleanup_intermediate_on_success: true

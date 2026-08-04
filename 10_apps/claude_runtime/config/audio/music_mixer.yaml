@@ -74,3 +74,23 @@ diagnostics:
   # null means "write the log beside the output file". Set to a path to
   # write every diagnostic log under one directory instead.
   directory: null
+
+# ---------------------------------------------------------------------------
+# Phase 11B.1 — Reel Builder Music Integration
+# ---------------------------------------------------------------------------
+#
+# Documentary only — src/music_mixer.py's own config loader does not read
+# this section (unknown top-level keys are safely ignored). The active
+# copy of this contract lives in config/reels/builder.yaml, which
+# src/reel_builder.py actually parses to drive the --music integration.
+# Kept here too so both config files describe the same intermediate-file
+# contract. Music remains explicitly supplied by the user — there is no
+# default_music, automatic_music_selection, or remote download setting
+# anywhere in this file.
+integration:
+  enabled: true
+  intermediate_filename: "reel_without_music.mp4"
+  final_filename: "reel_final.mp4"
+  keep_intermediate_default: false
+  preserve_intermediate_on_music_failure: true
+  cleanup_intermediate_on_success: true
