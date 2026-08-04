@@ -4,6 +4,7 @@ import argparse
 import json
 import re
 import subprocess
+import time
 from dataclasses import asdict, dataclass, field
 from datetime import date as date_cls
 from datetime import datetime, timezone
@@ -12,7 +13,7 @@ from typing import Any, Callable
 
 import yaml
 
-from . import media_inspector, music_mixer, video_engine
+from . import media_inspector, music_mixer, timeline_engine, video_engine
 
 # Phase 11A — Reel Builder Engine. Purely local: reads Reel scene clips
 # already produced by Phase 9 for one production date and concatenates
@@ -142,6 +143,19 @@ class MusicMixIntegrationError(ReelBuilderError):
     """
 
 
+class TimelineIntegrationError(ReelBuilderError):
+    """
+    Raised for any --timeline failure: a missing/empty/malformed
+    timeline file, a Timeline that fails validate_timeline(), a
+    disallowed construct (active transition, non-unit playback_rate,
+    gap, overlap, duplicate/missing source file), or a duration-
+    reconciliation mismatch against the actual probed media. No
+    VideoEngine or Music Mixer call is ever made when this is raised,
+    and directory scene discovery is never used as a fallback — mirrors
+    how MusicMixIntegrationError wraps every music-stage failure.
+    """
+
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -178,6 +192,18 @@ class BuilderConfig:
     keep_intermediate_default: bool = False
     preserve_intermediate_on_music_failure: bool = True
     cleanup_intermediate_on_success: bool = True
+
+    # Phase 11C.1 — Timeline -> Reel Builder Integration. Only read when
+    # --timeline is supplied; otherwise the original behavior is
+    # unaffected by any of these fields.
+    timeline_integration_enabled: bool = True
+    timeline_production_date_must_match: bool = True
+    timeline_duration_tolerance_seconds: float = 0.05
+    timeline_allow_trimmed_clips: bool = True
+    timeline_reject_active_transitions: bool = True
+    timeline_reject_non_unit_playback_rate: bool = True
+    timeline_reject_gaps: bool = True
+    timeline_reject_overlaps: bool = True
 
     def reel_scenes_dir(self, date: str, *, root: str | Path | None = None) -> Path:
         base = Path(root) if root is not None else _runtime_root()
@@ -220,6 +246,7 @@ def load_builder_config(config_path: str | Path | None = None) -> BuilderConfig:
     paths_section = raw.get("paths") or {}
     ffmpeg_section = raw.get("ffmpeg") or {}
     integration_section = raw.get("integration") or {}
+    timeline_integration_section = raw.get("timeline_integration") or {}
 
     transition = str(rendering.get("transition", "none"))
     if transition != "none":
@@ -263,6 +290,24 @@ def load_builder_config(config_path: str | Path | None = None) -> BuilderConfig:
         cleanup_intermediate_on_success=bool(
             integration_section.get("cleanup_intermediate_on_success", True)
         ),
+        timeline_integration_enabled=bool(timeline_integration_section.get("enabled", True)),
+        timeline_production_date_must_match=bool(
+            timeline_integration_section.get("production_date_must_match", True)
+        ),
+        timeline_duration_tolerance_seconds=float(
+            timeline_integration_section.get("duration_tolerance_seconds", 0.05)
+        ),
+        timeline_allow_trimmed_clips=bool(
+            timeline_integration_section.get("allow_trimmed_clips", True)
+        ),
+        timeline_reject_active_transitions=bool(
+            timeline_integration_section.get("reject_active_transitions", True)
+        ),
+        timeline_reject_non_unit_playback_rate=bool(
+            timeline_integration_section.get("reject_non_unit_playback_rate", True)
+        ),
+        timeline_reject_gaps=bool(timeline_integration_section.get("reject_gaps", True)),
+        timeline_reject_overlaps=bool(timeline_integration_section.get("reject_overlaps", True)),
     )
 
     return config
@@ -613,6 +658,356 @@ def build_ffmpeg_command(
 
 
 # ---------------------------------------------------------------------------
+# Timeline integration (Phase 11C.1)
+#
+# Consumes an already-built, already-validated timeline_engine.Timeline as
+# the authoritative scene order and timing plan, in place of directory
+# scene discovery. Timeline Engine never inspects real media, so every
+# clip's planned duration is reconciled here against a real probe_video()
+# call before anything is handed to Video Engine. Never falls back to
+# discover_scene_clips() if any of this fails.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(slots=True)
+class _TimelineSceneInput:
+    clip: "timeline_engine.VideoClip"
+    path: Path
+    source_in: float
+    source_out: float
+    actual_duration: float
+    is_full_clip: bool
+
+
+# Used for the base timeline_engine.validate_timeline() structural check
+# only (unique IDs, duration math, valid ranges, at least one video
+# clip, etc). Gap/overlap policy is deliberately NOT enforced here —
+# config.timeline_reject_gaps/timeline_reject_overlaps in
+# _select_primary_video_clips() are the actual authority for that, so
+# those flags stay meaningful independent of Timeline Engine's own
+# (always-on-by-default) gap/overlap checks.
+_TIMELINE_STRUCTURAL_VALIDATION_CONFIG = timeline_engine.TimelineConfig(
+    allow_video_gaps=True, allow_audio_overlap=True
+)
+
+
+def _load_and_validate_timeline(
+    timeline_path: Path,
+    date: str,
+    config: BuilderConfig,
+    *,
+    loader: Callable[..., Any] | None,
+    validator: Callable[..., Any] | None,
+) -> "timeline_engine.Timeline":
+    """
+    Loads and validates a timeline.json, enforcing production_date
+    matching per config. Raises TimelineIntegrationError for every
+    failure mode — missing/empty file, load failure, failed validation,
+    or a production_date mismatch. Never falls back to directory scene
+    discovery.
+    """
+    load_fn = loader or timeline_engine.load_timeline
+    validate_fn = validator or timeline_engine.validate_timeline
+
+    if not timeline_path.is_file():
+        raise TimelineIntegrationError(f"--timeline file not found: {timeline_path}")
+    if timeline_path.stat().st_size == 0:
+        raise TimelineIntegrationError(f"--timeline file is empty: {timeline_path}")
+
+    try:
+        timeline = load_fn(timeline_path)
+    except timeline_engine.TimelineEngineError as exc:
+        raise TimelineIntegrationError(f"Failed to load timeline {timeline_path}: {exc}") from exc
+
+    result = validate_fn(timeline, _TIMELINE_STRUCTURAL_VALIDATION_CONFIG)
+    if not result.passed:
+        raise TimelineIntegrationError(
+            f"Timeline {timeline_path} failed validation: {'; '.join(result.errors)}"
+        )
+
+    if (
+        config.timeline_production_date_must_match
+        and timeline.production_date is not None
+        and timeline.production_date != date
+    ):
+        raise TimelineIntegrationError(
+            f"Timeline production_date {timeline.production_date!r} does not match --date {date!r}"
+        )
+
+    return timeline
+
+
+def _select_primary_video_clips(
+    timeline: "timeline_engine.Timeline", config: BuilderConfig
+) -> tuple[list["timeline_engine.VideoClip"], list[str], int]:
+    """
+    Picks the lowest-`order` enabled video track as authoritative, in
+    timeline (start-ordered) sequence. Disabled clips are ignored.
+    Non-primary tracks (music, subtitle, overlay, metadata) are reported
+    back as ignored — subtitle/overlay explicitly flagged unsupported.
+    Rejects active transitions, non-unit playback_rate, gaps, overlaps
+    (per config flags), a missing/zero-byte source file, and duplicate
+    *resolved* source paths.
+    """
+    video_tracks = [
+        track for track in timeline.tracks if track.track_type == timeline_engine.TrackType.VIDEO
+    ]
+    enabled_video_tracks = [track for track in video_tracks if track.enabled]
+    if not enabled_video_tracks:
+        raise TimelineIntegrationError("Timeline has no enabled video track")
+
+    primary_track = min(enabled_video_tracks, key=lambda track: track.order)
+
+    ignored_tracks: list[str] = []
+    for track in timeline.tracks:
+        if track.track_id == primary_track.track_id:
+            continue
+        label = f"{track.track_id} ({track.track_type})"
+        if track.track_type in (timeline_engine.TrackType.SUBTITLE, timeline_engine.TrackType.OVERLAY):
+            label += " - unsupported in Phase 11C.1"
+        ignored_tracks.append(label)
+
+    all_clips = sorted(primary_track.clips, key=lambda clip: clip.start)
+    enabled_clips = [clip for clip in all_clips if clip.enabled]
+    ignored_disabled_count = len(all_clips) - len(enabled_clips)
+
+    if not enabled_clips:
+        raise TimelineIntegrationError("Timeline's primary video track has no enabled clips")
+
+    for clip in enabled_clips:
+        if not isinstance(clip, timeline_engine.VideoClip):
+            raise TimelineIntegrationError(
+                f"Non-video clip {clip.clip_id} found on the primary video track"
+            )
+        if config.timeline_reject_active_transitions and (
+            clip.transition_in != "none" or clip.transition_out != "none"
+        ):
+            raise TimelineIntegrationError(
+                f"Clip {clip.clip_id} uses an active transition (transition_in="
+                f"{clip.transition_in!r}, transition_out={clip.transition_out!r}); transitions "
+                "are not supported in Phase 11C.1"
+            )
+        if config.timeline_reject_non_unit_playback_rate and abs(clip.playback_rate - 1.0) > 1e-9:
+            raise TimelineIntegrationError(
+                f"Clip {clip.clip_id} has playback_rate={clip.playback_rate}; only 1.0 is "
+                "supported in Phase 11C.1"
+            )
+
+    # Gap/overlap adjacency is checked across ALL clips (including
+    # disabled ones), not just enabled_clips: a disabled clip still
+    # occupies its authored timeslot, so skipping it is not a gap. Only
+    # a genuinely empty span between two clips is flagged.
+    tolerance = config.timeline_duration_tolerance_seconds
+    for previous, current in zip(all_clips, all_clips[1:]):
+        gap = current.start - previous.end
+        if gap > tolerance and config.timeline_reject_gaps:
+            raise TimelineIntegrationError(
+                f"Gap between clips {previous.clip_id} and {current.clip_id} on the timeline "
+                "video track"
+            )
+        if gap < -tolerance and config.timeline_reject_overlaps:
+            raise TimelineIntegrationError(
+                f"Overlap between clips {previous.clip_id} and {current.clip_id} on the "
+                "timeline video track"
+            )
+
+    resolved_seen: dict[Path, str] = {}
+    for clip in enabled_clips:
+        source_path = Path(clip.source_path)
+        if not source_path.is_file():
+            raise TimelineIntegrationError(
+                f"Clip {clip.clip_id} source_path does not resolve to a regular file: {source_path}"
+            )
+        if source_path.stat().st_size == 0:
+            raise TimelineIntegrationError(f"Clip {clip.clip_id} source_path is zero bytes: {source_path}")
+        resolved = source_path.resolve()
+        if resolved in resolved_seen:
+            raise TimelineIntegrationError(
+                f"Clips {resolved_seen[resolved]} and {clip.clip_id} resolve to the same source "
+                f"file: {resolved}"
+            )
+        resolved_seen[resolved] = clip.clip_id
+
+    return enabled_clips, ignored_tracks, ignored_disabled_count
+
+
+def _reconcile_clip_durations(
+    clips: list["timeline_engine.VideoClip"],
+    config: BuilderConfig,
+    runner: SubprocessRunner,
+) -> tuple[list[_TimelineSceneInput], list[VideoProbe], int]:
+    """
+    Probes each clip's real source file (via the existing probe_video()
+    — no new Media Inspector dependency) and reconciles it against the
+    timeline's planned source_in/source_out/duration_seconds. Raises
+    TimelineIntegrationError, naming the exact clip and the planned vs.
+    actual numbers, for: negative source_in, source_out <= source_in,
+    planned duration not matching source_out - source_in, or source_out
+    exceeding the actual media duration — all beyond
+    config.timeline_duration_tolerance_seconds.
+    """
+    tolerance = config.timeline_duration_tolerance_seconds
+    scene_inputs: list[_TimelineSceneInput] = []
+    probes: list[VideoProbe] = []
+    trimmed_count = 0
+
+    for clip in clips:
+        source_path = Path(clip.source_path)
+        probe = probe_video(source_path, config, runner=runner)
+        actual_duration = probe.duration_seconds
+
+        source_in = clip.source_in
+        source_out = clip.source_out if clip.source_out is not None else clip.duration_seconds
+
+        if source_in < 0:
+            raise TimelineIntegrationError(f"Clip {clip.clip_id} has a negative source_in: {source_in}")
+        if source_out <= source_in:
+            raise TimelineIntegrationError(
+                f"Clip {clip.clip_id} source_out ({source_out}) must be greater than "
+                f"source_in ({source_in})"
+            )
+
+        planned_duration = source_out - source_in
+        if abs(planned_duration - clip.duration_seconds) > tolerance:
+            raise TimelineIntegrationError(
+                f"Clip {clip.clip_id} planned duration ({clip.duration_seconds:.3f}s) does not "
+                f"match source_out - source_in ({planned_duration:.3f}s) beyond tolerance "
+                f"{tolerance}s"
+            )
+
+        if source_out - actual_duration > tolerance:
+            raise TimelineIntegrationError(
+                f"Clip {clip.clip_id} source_out ({source_out:.3f}s) exceeds the actual media "
+                f"duration ({actual_duration:.3f}s) of {source_path} beyond tolerance {tolerance}s"
+            )
+
+        is_full_clip = source_in <= tolerance and (actual_duration - source_out) <= tolerance
+        if not is_full_clip and not config.timeline_allow_trimmed_clips:
+            raise TimelineIntegrationError(
+                f"Clip {clip.clip_id} requires trimming but timeline_integration."
+                "allow_trimmed_clips is disabled"
+            )
+        if not is_full_clip:
+            trimmed_count += 1
+
+        scene_inputs.append(
+            _TimelineSceneInput(
+                clip=clip,
+                path=source_path,
+                source_in=source_in,
+                source_out=source_out,
+                actual_duration=actual_duration,
+                is_full_clip=is_full_clip,
+            )
+        )
+        probes.append(probe)
+
+    return scene_inputs, probes, trimmed_count
+
+
+def _find_timeline_music_clip(timeline: "timeline_engine.Timeline") -> "timeline_engine.AudioClip | None":
+    """First enabled AudioClip on any audio track — purely descriptive;
+    never used to auto-enable music mixing."""
+    for track in timeline.tracks:
+        if track.track_type != timeline_engine.TrackType.AUDIO:
+            continue
+        for clip in track.clips:
+            if isinstance(clip, timeline_engine.AudioClip) and clip.enabled:
+                return clip
+    return None
+
+
+def _inject_trim_flags(command: list[str], trims: dict[str, tuple[float, float]]) -> list[str]:
+    """
+    Inserts per-input `-ss <source_in> -t <duration>` immediately before
+    the matching `-i <path>` pair, for ffmpeg input-seeking-based
+    trimming. trims maps a VideoInput's exact command-line path string
+    to (source_in_seconds, duration_seconds). Because the normalized-
+    render command always re-encodes (never stream-copies), input
+    seeking here lands on an exact re-encoded frame boundary rather than
+    the nearest keyframe — the "safe non-copy path" Phase 11C.1 requires
+    for trimmed clips. video_engine.py itself is not modified for this —
+    see the Phase 11C.1 plan for why command-level post-processing was
+    chosen instead.
+    """
+    result: list[str] = []
+    index = 0
+    while index < len(command):
+        token = command[index]
+        if token == "-i" and index + 1 < len(command) and command[index + 1] in trims:
+            source_in, duration = trims[command[index + 1]]
+            result.extend(["-ss", f"{source_in:.6f}", "-t", f"{duration:.6f}"])
+        result.append(token)
+        index += 1
+    return result
+
+
+def _execute_normalized_render_with_trim(
+    engine: "video_engine.VideoEngine",
+    plan: "video_engine.ConcatPlan",
+    trims: dict[str, tuple[float, float]],
+    *,
+    force: bool,
+) -> "video_engine.VideoEngineResult":
+    """
+    Mirrors VideoEngine.execute_plan()'s NORMALIZED_RENDER path exactly
+    (same validation/overwrite/verification/error semantics — reuses its
+    already-public validate_inputs()/build_normalized_concat_command()/
+    verify_output() methods directly) but injects per-input trim flags
+    into the constructed command before running it. video_engine.py
+    itself is not modified.
+    """
+    engine.validate_inputs(plan.inputs, plan.output)
+
+    if plan.output.path.exists() and force is False and engine.config.overwrite_requires_force:
+        raise video_engine.VideoOutputExistsError(
+            f"{plan.output.path} already exists; pass force=True to overwrite."
+        )
+
+    command = engine.build_normalized_concat_command(plan, force=force)
+    command = _inject_trim_flags(command, trims)
+
+    started_at = _now_iso()
+    start_monotonic = time.monotonic()
+    process_result = engine.runner(command, timeout=engine.config.ffmpeg_timeout_seconds)
+    finished_at = _now_iso()
+    duration_seconds = time.monotonic() - start_monotonic
+
+    if process_result.returncode != 0:
+        raise video_engine.FFmpegExecutionError(
+            f"ffmpeg exited {process_result.returncode}: {process_result.stderr.strip()[-2000:]}"
+        )
+
+    output_exists, output_size_bytes = engine.verify_output(plan.output.path)
+    if not output_exists:
+        raise video_engine.VideoOutputVerificationError(
+            f"ffmpeg reported success but no output file exists: {plan.output.path}"
+        )
+    if engine.config.verify_non_zero_bytes and output_size_bytes == 0:
+        raise video_engine.VideoOutputVerificationError(f"Output file is zero bytes: {plan.output.path}")
+
+    return video_engine.VideoEngineResult(
+        plan_type=plan.plan_type,
+        input_files=[str(i.path) for i in plan.inputs],
+        output_file=str(plan.output.path),
+        command=command,
+        started_at=started_at,
+        finished_at=finished_at,
+        duration_seconds=duration_seconds,
+        return_code=process_result.returncode,
+        stdout=process_result.stdout,
+        stderr=process_result.stderr,
+        output_exists=output_exists,
+        output_size_bytes=output_size_bytes,
+        manifest_path=None,
+        temporary_files=[],
+        cleanup_result="not_applicable",
+        warnings=[],
+        error=None,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Diagnostics / build log
 # ---------------------------------------------------------------------------
 
@@ -632,6 +1027,10 @@ class BuildResult:
     # unaffected); a dict shaped per build_log.json's music_mix field
     # when --music was supplied.
     music_mix: dict[str, Any] | None = None
+    # Phase 11C.1 — always None for a build without --timeline (existing
+    # callers unaffected); a dict shaped per build_log.json's timeline
+    # field when --timeline was supplied.
+    timeline: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -656,6 +1055,7 @@ def _write_build_log(
     temporary_files: list[str] | None = None,
     cleanup_result: str | None = None,
     music_mix: dict[str, Any] | None = None,
+    timeline: dict[str, Any] | None = None,
 ) -> Path:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     finished_at = _now_iso()
@@ -683,6 +1083,10 @@ def _write_build_log(
         # every build that did not request --music, so this never
         # changes the log shape for existing (no-music) callers.
         "music_mix": music_mix if music_mix is not None else {"enabled": False},
+        # Phase 11C.1 addition — always present. {"enabled": false} for
+        # every build that did not request --timeline, so this never
+        # changes the log shape for existing (no-timeline) callers.
+        "timeline": timeline if timeline is not None else {"enabled": False},
     }
 
     temporary_path = log_path.with_suffix(log_path.suffix + ".tmp")
@@ -728,6 +1132,9 @@ def build_reel(
     music_overrides: dict[str, Any] | None = None,
     keep_intermediate: bool | None = None,
     music_mixer_callable: Callable[..., Any] | None = None,
+    timeline_path: str | Path | None = None,
+    timeline_loader_callable: Callable[..., Any] | None = None,
+    timeline_validator_callable: Callable[..., Any] | None = None,
 ) -> BuildResult:
     """
     Build output/<date>/videos/reel_final.mp4 from the Reel scene clips
@@ -749,6 +1156,20 @@ def build_reel(
     (music_volume/source_audio_volume/fade_in_seconds/fade_out_seconds/
     music_mode/ducking_mode); any key absent or None falls back to Music
     Mixer's own configured defaults.
+
+    Phase 11C.1: when timeline_path is None (the default), this
+    function's scene-acquisition stage is byte-for-byte identical to
+    Phase 11B.1 — directory scene discovery via discover_scene_clips(),
+    Timeline Engine is never imported or invoked. When timeline_path is
+    given, it replaces directory scene discovery entirely: the timeline
+    is loaded and validated (timeline_loader_callable/
+    timeline_validator_callable default to timeline_engine.load_timeline/
+    validate_timeline — real public APIs, injectable for tests), its
+    primary video track's enabled clips define scene order, and each
+    clip's planned duration is reconciled against a real probe_video()
+    call before any render planning happens. A trimmed clip always
+    forces a NORMALIZED_RENDER plan. Never falls back to directory scene
+    discovery if any of this fails.
     """
     started_at = _now_iso()
     validate_date(date)
@@ -756,6 +1177,9 @@ def build_reel(
     music_enabled = music_path is not None
     music_mixer_fn = music_mixer_callable or music_mixer.mix_music
     overrides = music_overrides or {}
+
+    timeline_enabled = timeline_path is not None
+    timeline_path_obj = Path(timeline_path) if timeline_enabled else None
 
     scenes_dir = config.reel_scenes_dir(date, root=root)
     final_output_path = config.reel_final_path(date, root=root)
@@ -775,12 +1199,88 @@ def build_reel(
             )
 
     music_mix_log_info: dict[str, Any] | None = {"enabled": True} if music_enabled else None
+    timeline_log_info: dict[str, Any] = (
+        {"enabled": True, "timeline_path": str(timeline_path_obj)} if timeline_enabled else {"enabled": False}
+    )
 
     try:
-        clips = discover_scene_clips(scenes_dir, config.scene_count)
+        if timeline_enabled and not config.timeline_integration_enabled:
+            raise TimelineIntegrationError(
+                "--timeline was supplied but config timeline_integration.enabled is false"
+            )
 
-        probes = [probe_video(clip.path, config, runner=runner) for clip in clips]
-        normalize = validate_clip_consistency(probes, config)
+        timeline_warnings: list[str] = []
+        trimmed_count = 0
+
+        if timeline_enabled:
+            timeline_obj = _load_and_validate_timeline(
+                timeline_path_obj,
+                date,
+                config,
+                loader=timeline_loader_callable,
+                validator=timeline_validator_callable,
+            )
+            timeline_clips, ignored_tracks, ignored_disabled_count = _select_primary_video_clips(
+                timeline_obj, config
+            )
+            scene_inputs, probes, trimmed_count = _reconcile_clip_durations(
+                timeline_clips, config, runner
+            )
+            clips = [
+                SceneClip(
+                    index=(scene_input.clip.scene_number or position),
+                    path=scene_input.path,
+                )
+                for position, scene_input in enumerate(scene_inputs, start=1)
+            ]
+
+            timeline_music_clip = _find_timeline_music_clip(timeline_obj)
+            if timeline_music_clip is not None and not music_enabled:
+                timeline_warnings.append(
+                    "Timeline includes a music track "
+                    f"({timeline_music_clip.source_path}) but --music was not supplied; "
+                    "automatic music mixing is never performed — pass --music explicitly."
+                )
+            elif (
+                timeline_music_clip is not None
+                and music_enabled
+                and Path(music_path).resolve() != Path(timeline_music_clip.source_path).resolve()
+            ):
+                timeline_warnings.append(
+                    f"--music ({music_path}) differs from the timeline's music clip "
+                    f"({timeline_music_clip.source_path}); the CLI --music path is authoritative."
+                )
+
+            planned_duration_seconds = sum(scene_input.clip.duration_seconds for scene_input in scene_inputs)
+            reconciled_duration_seconds = sum(
+                scene_input.source_out - scene_input.source_in for scene_input in scene_inputs
+            )
+
+            timeline_log_info = {
+                "enabled": True,
+                "timeline_path": str(timeline_path_obj),
+                "timeline_id": timeline_obj.timeline_id,
+                "schema_version": timeline_obj.schema_version,
+                "validation_passed": True,
+                "production_date_match": (
+                    timeline_obj.production_date is None or timeline_obj.production_date == date
+                ),
+                "video_clip_count": len(scene_inputs),
+                "ignored_disabled_clips": ignored_disabled_count,
+                "ignored_tracks": ignored_tracks,
+                "planned_duration_seconds": planned_duration_seconds,
+                "reconciled_duration_seconds": reconciled_duration_seconds,
+                "duration_tolerance_seconds": config.timeline_duration_tolerance_seconds,
+                "trimmed_clip_count": trimmed_count,
+                "warnings": list(timeline_warnings),
+            }
+        else:
+            clips = discover_scene_clips(scenes_dir, config.scene_count)
+            probes = [probe_video(clip.path, config, runner=runner) for clip in clips]
+            scene_inputs = None
+
+        media_incompatible = validate_clip_consistency(probes, config)
+        normalize = media_incompatible or (timeline_enabled and trimmed_count > 0)
 
         audio_flags = {probe.has_audio for probe in probes}
         if len(audio_flags) > 1:
@@ -790,7 +1290,7 @@ def build_reel(
                 "synthesis is not implemented in Phase 11A.3."
             )
 
-        warnings: list[str] = []
+        warnings: list[str] = list(timeline_warnings)
         if not all(probe.has_audio for probe in probes):
             warnings.append(
                 "one_or_more_clips_missing_audio_stream_output_audio_may_be_incomplete"
@@ -814,19 +1314,32 @@ def build_reel(
 
         # Reel Builder owns this plan-type decision itself (via
         # validate_clip_consistency()'s independent normalize_resolution/
-        # normalize_fps flags) rather than re-deriving it through
+        # normalize_fps flags, plus — in timeline mode — whether any clip
+        # needs trimming) rather than re-deriving it through
         # engine.build_concat_plan() — see the module docstring for why.
+        if timeline_enabled:
+            reasons = [
+                "timeline_trim_required" if trimmed_count > 0 else "timeline_full_clip",
+                "timeline_duration_reconciled",
+            ]
+            if media_incompatible:
+                reasons.append("timeline_media_incompatible")
+            if normalize:
+                reasons.append("timeline_requires_normalized_render")
+        else:
+            reasons = (
+                ["reel_builder_resolution_or_fps_mismatch_normalized"]
+                if normalize
+                else ["reel_builder_compatible_for_stream_copy"]
+            )
+
         plan = video_engine.ConcatPlan(
             plan_type=(
                 video_engine.PLAN_NORMALIZED_RENDER if normalize else video_engine.PLAN_LOSSLESS_COPY
             ),
             inputs=inputs,
             output=output_spec,
-            reasons=(
-                ["reel_builder_resolution_or_fps_mismatch_normalized"]
-                if normalize
-                else ["reel_builder_compatible_for_stream_copy"]
-            ),
+            reasons=reasons,
             target_video=(
                 video_engine.VideoStreamSpec(width=probes[0].width, height=probes[0].height)
                 if normalize
@@ -835,7 +1348,18 @@ def build_reel(
         )
 
         try:
-            engine_result = engine.execute_plan(plan, force=force)
+            if timeline_enabled and trimmed_count > 0:
+                trims = {
+                    str(scene_input.path): (
+                        scene_input.source_in,
+                        scene_input.source_out - scene_input.source_in,
+                    )
+                    for scene_input in scene_inputs
+                    if not scene_input.is_full_clip
+                }
+                engine_result = _execute_normalized_render_with_trim(engine, plan, trims, force=force)
+            else:
+                engine_result = engine.execute_plan(plan, force=force)
         except video_engine.FFmpegExecutionError as exc:
             raise FfmpegRenderError(str(exc)) from exc
         except video_engine.VideoOutputVerificationError as exc:
@@ -911,10 +1435,16 @@ def build_reel(
             result_output_path = final_output_path
             result_output_size = mix_result.output_size_bytes
 
+        clip_durations = (
+            [scene_input.source_out - scene_input.source_in for scene_input in scene_inputs]
+            if timeline_enabled
+            else [probe.duration_seconds for probe in probes]
+        )
+
         build_result = BuildResult(
             production_date=date,
             scene_clips=[str(clip.path) for clip in clips],
-            clip_durations=[probe.duration_seconds for probe in probes],
+            clip_durations=clip_durations,
             render_duration_seconds=engine_result.duration_seconds,
             ffmpeg_command=engine_result.command,
             output_path=str(result_output_path),
@@ -922,6 +1452,7 @@ def build_reel(
             normalized=normalize,
             warnings=warnings,
             music_mix=music_mix_log_info,
+            timeline=timeline_log_info if timeline_enabled else None,
         )
 
         _write_build_log(
@@ -942,6 +1473,7 @@ def build_reel(
             temporary_files=engine_result.temporary_files,
             cleanup_result=engine_result.cleanup_result,
             music_mix=music_mix_log_info,
+            timeline=timeline_log_info,
         )
 
         return build_result
@@ -949,6 +1481,14 @@ def build_reel(
     except ReelBuilderError as exc:
         if isinstance(exc, MusicMixIntegrationError):
             errors = ["music mix failed", str(exc)]
+        elif isinstance(exc, TimelineIntegrationError):
+            errors = ["timeline integration failed", str(exc)]
+            timeline_log_info = {
+                **timeline_log_info,
+                "enabled": True,
+                "validation_passed": False,
+                "error": str(exc),
+            }
         else:
             errors = [str(exc)]
 
@@ -965,6 +1505,7 @@ def build_reel(
             errors=errors,
             result="failed",
             music_mix=music_mix_log_info,
+            timeline=timeline_log_info,
         )
         raise
 
@@ -1018,6 +1559,19 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         help="Retain reel_without_music.mp4 after a successful music mix (requires --music).",
     )
 
+    # Phase 11C.1 — optional Timeline Engine integration. Absent by
+    # default, so behavior is unaffected unless --timeline is explicitly
+    # supplied. There is no implicit timeline auto-discovery anywhere.
+    parser.add_argument(
+        "--timeline",
+        default=None,
+        help=(
+            "Path to a validated timeline.json produced by Timeline Engine "
+            "(Phase 11C). Optional — omit for the original scene-directory-"
+            "discovery behavior."
+        ),
+    )
+
     arguments = parser.parse_args(argv)
 
     music_specific_flags_set = any(
@@ -1056,6 +1610,8 @@ def _print_result(result: BuildResult) -> None:
     print(f"warnings:                {result.warnings}")
     if result.music_mix is not None:
         print(f"music mix:               {result.music_mix}")
+    if result.timeline is not None:
+        print(f"timeline:                {result.timeline}")
     print()
 
 
@@ -1086,6 +1642,7 @@ def main(argv: list[str] | None = None) -> None:
             music_path=arguments.music,
             music_overrides=music_overrides,
             keep_intermediate=keep_intermediate,
+            timeline_path=arguments.timeline,
         )
     except ReelBuilderError as exc:
         print(f"[ReelBuilder] {exc}")

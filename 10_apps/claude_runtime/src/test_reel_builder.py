@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from . import music_mixer
+from . import music_mixer, timeline_engine
 from .reel_builder import (
     BuilderConfig,
     DuplicateSceneError,
@@ -22,6 +22,7 @@ from .reel_builder import (
     ReelBuildOutputMissingError,
     SceneClip,
     SceneDirectoryNotFoundError,
+    TimelineIntegrationError,
     UnrecognizedSceneFileError,
     build_ffmpeg_command,
     build_reel,
@@ -1235,6 +1236,789 @@ class BuildLogMusicTests(ReelBuilderTempTestCase):
         final_path = self.config.reel_final_path(PRODUCTION_DATE, root=self.temp_dir)
         expected_suffix = "_music_mix_log.json"
         self.assertTrue(result.music_mix["diagnostic_log"].endswith(f"{final_path.stem}{expected_suffix}"))
+
+
+# ---------------------------------------------------------------------------
+# Phase 11C.1 — Timeline -> Reel Builder Integration
+# ---------------------------------------------------------------------------
+
+
+class TimelineTestCase(ReelBuilderTempTestCase):
+    """Shared helpers for building a real timeline_engine.Timeline over
+    the temp scene files, matching FakeRunner's probe fixtures. Uses the
+    real (already-tested) timeline_engine.save_timeline()/load_timeline()/
+    validate_timeline() by default -- no timeline_engine internals are
+    reimplemented here."""
+
+    def _write_scenes(self, count: int, *, duration: float = 5.0, size: int = 100) -> list[Path]:
+        return [self._write_scene(f"scene_{index:02d}.mp4", size=size) for index in range(1, count + 1)]
+
+    def _build_timeline(
+        self,
+        clip_paths: list[Path],
+        *,
+        production_date: str | None = PRODUCTION_DATE,
+        scene_duration: float = 5.0,
+        music_path: str | Path | None = None,
+    ) -> timeline_engine.Timeline:
+        video_track = timeline_engine.TimelineTrack(
+            track_id="track_video", track_type=timeline_engine.TrackType.VIDEO, order=0
+        )
+        running = 0.0
+        for index, path in enumerate(clip_paths):
+            video_track.clips.append(
+                timeline_engine.VideoClip(
+                    clip_id=f"clip_video_{index + 1:02d}",
+                    track_id="track_video",
+                    source_path=str(path),
+                    start=running,
+                    end=running + scene_duration,
+                    duration_seconds=scene_duration,
+                    source_in=0.0,
+                    source_out=scene_duration,
+                    scene_number=index + 1,
+                )
+            )
+            running += scene_duration
+
+        tracks = [video_track]
+        if music_path is not None:
+            audio_track = timeline_engine.TimelineTrack(
+                track_id="track_audio_music", track_type=timeline_engine.TrackType.AUDIO, order=1
+            )
+            audio_track.clips.append(
+                timeline_engine.AudioClip(
+                    clip_id="clip_audio_music",
+                    track_id="track_audio_music",
+                    source_path=str(music_path),
+                    start=0.0,
+                    end=running,
+                    duration_seconds=running,
+                    source_in=0.0,
+                    source_out=running,
+                )
+            )
+            tracks.append(audio_track)
+
+        return timeline_engine.Timeline(
+            timeline_id="test-timeline-id",
+            schema_version="1.0",
+            production_date=production_date,
+            created_at="2026-08-01T00:00:00+00:00",
+            duration_seconds=running,
+            tracks=tracks,
+        )
+
+    def _write_timeline(self, timeline: timeline_engine.Timeline, *, name: str = "timeline.json") -> Path:
+        path = self.temp_dir / name
+        timeline_engine.save_timeline(timeline, path)
+        return path
+
+
+class TimelineBackwardCompatibilityTests(TimelineTestCase):
+    def test_no_timeline_never_calls_timeline_loader(self) -> None:
+        clip_paths = self._write_five_scenes()
+        runner = FakeRunner(probes=self._probes_for(clip_paths))
+
+        def _fail_if_called(*args, **kwargs):
+            raise AssertionError("timeline_loader_callable must not be called without --timeline")
+
+        result = build_reel(
+            PRODUCTION_DATE,
+            self.config,
+            runner=runner,
+            root=self.temp_dir,
+            timeline_loader_callable=_fail_if_called,
+            timeline_validator_callable=_fail_if_called,
+        )
+        self.assertIsNone(result.timeline)
+
+    def test_no_timeline_keeps_original_scene_discovery(self) -> None:
+        clip_paths = self._write_five_scenes()
+        runner = FakeRunner(probes=self._probes_for(clip_paths))
+        result = build_reel(PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir)
+        self.assertEqual(len(result.scene_clips), 5)
+        self.assertIsNone(result.timeline)
+
+    def test_old_positional_and_keyword_callers_still_work_with_timeline_params_present(self) -> None:
+        clip_paths = self._write_five_scenes()
+        runner = FakeRunner(probes=self._probes_for(clip_paths))
+        result = build_reel(PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir)
+        self.assertTrue(result.output_path)
+
+
+class TimelineCliTests(unittest.TestCase):
+    def test_timeline_flag_accepted(self) -> None:
+        args = parse_arguments(["--date", PRODUCTION_DATE, "--timeline", "/tmp/timeline.json"])
+        self.assertEqual(args.timeline, "/tmp/timeline.json")
+
+    def test_timeline_with_music_accepted(self) -> None:
+        args = parse_arguments(
+            ["--date", PRODUCTION_DATE, "--timeline", "/tmp/t.json", "--music", "/tmp/m.mp3"]
+        )
+        self.assertEqual(args.timeline, "/tmp/t.json")
+        self.assertEqual(args.music, "/tmp/m.mp3")
+
+    def test_timeline_omitted_defaults_to_none(self) -> None:
+        args = parse_arguments(["--date", PRODUCTION_DATE])
+        self.assertIsNone(args.timeline)
+
+
+class TimelineLoadingTests(TimelineTestCase):
+    def test_missing_timeline_file_rejected(self) -> None:
+        with self.assertRaises(TimelineIntegrationError):
+            build_reel(
+                PRODUCTION_DATE,
+                self.config,
+                runner=FakeRunner(),
+                root=self.temp_dir,
+                timeline_path=self.temp_dir / "does_not_exist.json",
+            )
+
+    def test_empty_timeline_file_rejected(self) -> None:
+        timeline_path = self.temp_dir / "timeline.json"
+        timeline_path.write_bytes(b"")
+        with self.assertRaises(TimelineIntegrationError):
+            build_reel(
+                PRODUCTION_DATE, self.config, runner=FakeRunner(), root=self.temp_dir, timeline_path=timeline_path
+            )
+
+    def test_malformed_timeline_file_rejected(self) -> None:
+        timeline_path = self.temp_dir / "timeline.json"
+        timeline_path.write_text("{not valid json")
+        with self.assertRaises(TimelineIntegrationError):
+            build_reel(
+                PRODUCTION_DATE, self.config, runner=FakeRunner(), root=self.temp_dir, timeline_path=timeline_path
+            )
+
+    def test_invalid_timeline_rejected(self) -> None:
+        # Structurally valid JSON but fails timeline_engine.validate_timeline()
+        # (no video track at all).
+        bad_timeline = timeline_engine.Timeline(timeline_id="bad", duration_seconds=0.0, tracks=[])
+        timeline_path = self._write_timeline(bad_timeline)
+        with self.assertRaises(TimelineIntegrationError):
+            build_reel(
+                PRODUCTION_DATE, self.config, runner=FakeRunner(), root=self.temp_dir, timeline_path=timeline_path
+            )
+
+    def test_timeline_date_mismatch_rejected(self) -> None:
+        clip_paths = self._write_scenes(3)
+        timeline = self._build_timeline(clip_paths, production_date="2020-01-01")
+        timeline_path = self._write_timeline(timeline)
+        with self.assertRaises(TimelineIntegrationError):
+            build_reel(
+                PRODUCTION_DATE, self.config, runner=FakeRunner(), root=self.temp_dir, timeline_path=timeline_path
+            )
+
+    def test_timeline_date_mismatch_allowed_when_config_disables_check(self) -> None:
+        clip_paths = self._write_scenes(3)
+        timeline = self._build_timeline(clip_paths, production_date="2020-01-01")
+        timeline_path = self._write_timeline(timeline)
+        config = BuilderConfig(timeline_production_date_must_match=False)
+        runner = FakeRunner(probes=self._probes_for(clip_paths))
+        result = build_reel(
+            PRODUCTION_DATE, config, runner=runner, root=self.temp_dir, timeline_path=timeline_path
+        )
+        self.assertFalse(result.timeline["production_date_match"])
+
+    def test_timeline_integration_disabled_rejects_timeline_flag(self) -> None:
+        clip_paths = self._write_scenes(3)
+        timeline = self._build_timeline(clip_paths)
+        timeline_path = self._write_timeline(timeline)
+        config = BuilderConfig(timeline_integration_enabled=False)
+        with self.assertRaises(TimelineIntegrationError):
+            build_reel(
+                PRODUCTION_DATE, config, runner=FakeRunner(), root=self.temp_dir, timeline_path=timeline_path
+            )
+
+
+class TimelineAuthorityTests(TimelineTestCase):
+    def test_scene_order_overrides_directory_order(self) -> None:
+        clip_paths = self._write_scenes(3)
+        reversed_paths = list(reversed(clip_paths))
+        timeline = self._build_timeline(reversed_paths)
+        timeline_path = self._write_timeline(timeline)
+        runner = FakeRunner(probes=self._probes_for(clip_paths))
+
+        result = build_reel(
+            PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir, timeline_path=timeline_path
+        )
+        self.assertEqual(result.scene_clips, [str(p) for p in reversed_paths])
+
+    def test_disabled_clip_ignored(self) -> None:
+        clip_paths = self._write_scenes(3)
+        timeline = self._build_timeline(clip_paths)
+        timeline.tracks[0].clips[1].enabled = False
+        timeline_path = self._write_timeline(timeline)
+        runner = FakeRunner(probes=self._probes_for(clip_paths))
+
+        result = build_reel(
+            PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir, timeline_path=timeline_path
+        )
+        self.assertEqual(len(result.scene_clips), 2)
+        self.assertEqual(result.timeline["ignored_disabled_clips"], 1)
+
+    def test_duplicate_resolved_source_path_rejected(self) -> None:
+        clip_paths = self._write_scenes(2)
+        timeline = self._build_timeline(clip_paths)
+        timeline.tracks[0].clips[1].source_path = str(clip_paths[0])
+        timeline_path = self._write_timeline(timeline)
+        with self.assertRaises(TimelineIntegrationError):
+            build_reel(
+                PRODUCTION_DATE, self.config, runner=FakeRunner(), root=self.temp_dir, timeline_path=timeline_path
+            )
+
+    def test_missing_source_file_rejected(self) -> None:
+        clip_paths = self._write_scenes(2)
+        timeline = self._build_timeline(clip_paths)
+        timeline.tracks[0].clips[1].source_path = str(self.temp_dir / "does_not_exist.mp4")
+        timeline_path = self._write_timeline(timeline)
+        with self.assertRaises(TimelineIntegrationError):
+            build_reel(
+                PRODUCTION_DATE, self.config, runner=FakeRunner(), root=self.temp_dir, timeline_path=timeline_path
+            )
+
+    def test_active_transition_rejected(self) -> None:
+        clip_paths = self._write_scenes(2)
+        timeline = self._build_timeline(clip_paths)
+        timeline.tracks[0].clips[0].transition_out = "crossfade"
+        timeline_path = self._write_timeline(timeline)
+        with self.assertRaises(TimelineIntegrationError):
+            build_reel(
+                PRODUCTION_DATE, self.config, runner=FakeRunner(), root=self.temp_dir, timeline_path=timeline_path
+            )
+
+    def test_non_unit_playback_rate_rejected(self) -> None:
+        clip_paths = self._write_scenes(2)
+        timeline = self._build_timeline(clip_paths)
+        timeline.tracks[0].clips[0].playback_rate = 1.5
+        timeline_path = self._write_timeline(timeline)
+        with self.assertRaises(TimelineIntegrationError):
+            build_reel(
+                PRODUCTION_DATE, self.config, runner=FakeRunner(), root=self.temp_dir, timeline_path=timeline_path
+            )
+
+    def test_gap_rejected(self) -> None:
+        clip_paths = self._write_scenes(2)
+        timeline = self._build_timeline(clip_paths)
+        timeline.tracks[0].clips[1].start += 2.0
+        timeline.tracks[0].clips[1].end += 2.0
+        timeline.duration_seconds += 2.0
+        timeline_path = self._write_timeline(timeline)
+        with self.assertRaises(TimelineIntegrationError):
+            build_reel(
+                PRODUCTION_DATE, self.config, runner=FakeRunner(), root=self.temp_dir, timeline_path=timeline_path
+            )
+
+    def test_overlap_rejected(self) -> None:
+        clip_paths = self._write_scenes(2)
+        timeline = self._build_timeline(clip_paths)
+        timeline.tracks[0].clips[1].start -= 2.0
+        timeline_path = self._write_timeline(timeline)
+        with self.assertRaises(TimelineIntegrationError):
+            build_reel(
+                PRODUCTION_DATE, self.config, runner=FakeRunner(), root=self.temp_dir, timeline_path=timeline_path
+            )
+
+
+class TimelineDurationReconciliationTests(TimelineTestCase):
+    def test_exact_duration_passes(self) -> None:
+        clip_paths = self._write_scenes(2)
+        timeline = self._build_timeline(clip_paths, scene_duration=5.0)
+        timeline_path = self._write_timeline(timeline)
+        runner = FakeRunner(probes=self._probes_for(clip_paths, duration=5.0))
+
+        result = build_reel(
+            PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir, timeline_path=timeline_path
+        )
+        self.assertEqual(result.timeline["trimmed_clip_count"], 0)
+
+    def test_mismatch_within_tolerance_passes(self) -> None:
+        clip_paths = self._write_scenes(2)
+        timeline = self._build_timeline(clip_paths, scene_duration=5.0)
+        timeline_path = self._write_timeline(timeline)
+        # Actual media is 5.02s, planned is 5.0s -- within the default 0.05s tolerance.
+        runner = FakeRunner(probes=self._probes_for(clip_paths, duration=5.02))
+
+        result = build_reel(
+            PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir, timeline_path=timeline_path
+        )
+        self.assertIsNotNone(result.timeline)
+
+    def test_actual_source_shorter_than_source_out_fails(self) -> None:
+        clip_paths = self._write_scenes(2)
+        timeline = self._build_timeline(clip_paths, scene_duration=5.0)
+        timeline_path = self._write_timeline(timeline)
+        # Actual media is only 3s -- shorter than the planned 5s trim range.
+        runner = FakeRunner(probes=self._probes_for(clip_paths, duration=3.0))
+
+        with self.assertRaises(TimelineIntegrationError) as ctx:
+            build_reel(
+                PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir, timeline_path=timeline_path
+            )
+        self.assertIn("clip_video_01", str(ctx.exception))
+
+    def test_trim_range_shorter_than_actual_file_passes(self) -> None:
+        clip_paths = self._write_scenes(2)
+        timeline = self._build_timeline(clip_paths, scene_duration=3.0)
+        timeline_path = self._write_timeline(timeline)
+        # Actual media is 5s but the timeline only uses the first 3s.
+        runner = FakeRunner(probes=self._probes_for(clip_paths, duration=5.0))
+
+        result = build_reel(
+            PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir, timeline_path=timeline_path
+        )
+        self.assertEqual(result.timeline["trimmed_clip_count"], 2)
+
+    def test_negative_source_in_fails(self) -> None:
+        clip_paths = self._write_scenes(2)
+        timeline = self._build_timeline(clip_paths, scene_duration=5.0)
+        timeline.tracks[0].clips[0].source_in = -1.0
+        timeline_path = self._write_timeline(timeline)
+        runner = FakeRunner(probes=self._probes_for(clip_paths, duration=5.0))
+
+        with self.assertRaises(TimelineIntegrationError) as ctx:
+            build_reel(
+                PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir, timeline_path=timeline_path
+            )
+        self.assertIn("clip_video_01", str(ctx.exception))
+
+    def test_source_out_not_greater_than_source_in_fails(self) -> None:
+        clip_paths = self._write_scenes(2)
+        timeline = self._build_timeline(clip_paths, scene_duration=5.0)
+        timeline.tracks[0].clips[0].source_out = timeline.tracks[0].clips[0].source_in
+        timeline_path = self._write_timeline(timeline)
+        runner = FakeRunner(probes=self._probes_for(clip_paths, duration=5.0))
+
+        with self.assertRaises(TimelineIntegrationError):
+            build_reel(
+                PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir, timeline_path=timeline_path
+            )
+
+    def test_planned_duration_mismatch_fails(self) -> None:
+        clip_paths = self._write_scenes(2)
+        timeline = self._build_timeline(clip_paths, scene_duration=5.0)
+        # duration_seconds says 5.0 but source_out - source_in is 4.0.
+        timeline.tracks[0].clips[0].source_out = 4.0
+        timeline_path = self._write_timeline(timeline)
+        runner = FakeRunner(probes=self._probes_for(clip_paths, duration=5.0))
+
+        with self.assertRaises(TimelineIntegrationError) as ctx:
+            build_reel(
+                PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir, timeline_path=timeline_path
+            )
+        self.assertIn("clip_video_01", str(ctx.exception))
+
+
+class TimelinePlanningTests(TimelineTestCase):
+    def test_full_compatible_clips_use_lossless_copy(self) -> None:
+        clip_paths = self._write_scenes(3)
+        timeline = self._build_timeline(clip_paths, scene_duration=5.0)
+        timeline_path = self._write_timeline(timeline)
+        runner = FakeRunner(probes=self._probes_for(clip_paths, duration=5.0))
+
+        result = build_reel(
+            PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir, timeline_path=timeline_path
+        )
+        self.assertFalse(result.normalized)
+
+    def test_trimmed_clip_forces_normalized_render(self) -> None:
+        clip_paths = self._write_scenes(3)
+        timeline = self._build_timeline(clip_paths, scene_duration=3.0)
+        timeline_path = self._write_timeline(timeline)
+        # Actual media is 5s, timeline only uses the first 3s -> trim required.
+        runner = FakeRunner(probes=self._probes_for(clip_paths, duration=5.0))
+
+        result = build_reel(
+            PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir, timeline_path=timeline_path
+        )
+        self.assertTrue(result.normalized)
+        ffmpeg_calls = [c for c in runner.calls if Path(c[0]).name == "ffmpeg"]
+        self.assertEqual(len(ffmpeg_calls), 1)
+        self.assertIn("-filter_complex", ffmpeg_calls[0])
+        self.assertIn("-ss", ffmpeg_calls[0])
+        self.assertIn("-t", ffmpeg_calls[0])
+
+    def test_plan_reasons_contain_timeline_reasons(self) -> None:
+        clip_paths = self._write_scenes(2)
+        timeline = self._build_timeline(clip_paths, scene_duration=5.0)
+        timeline_path = self._write_timeline(timeline)
+        runner = FakeRunner(probes=self._probes_for(clip_paths, duration=5.0))
+
+        build_reel(
+            PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir, timeline_path=timeline_path
+        )
+        log_path = self.config.build_log_path(PRODUCTION_DATE, root=self.temp_dir)
+        payload = json.loads(log_path.read_text(encoding="utf-8"))
+        self.assertTrue(any(r.startswith("timeline_") for r in payload["engine_reasons"]))
+
+    def test_source_order_preserved_in_render(self) -> None:
+        clip_paths = self._write_scenes(3)
+        reversed_paths = list(reversed(clip_paths))
+        timeline = self._build_timeline(reversed_paths, scene_duration=5.0)
+        timeline_path = self._write_timeline(timeline)
+        runner = FakeRunner(probes=self._probes_for(clip_paths, duration=5.0))
+
+        build_reel(
+            PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir, timeline_path=timeline_path
+        )
+        ffprobe_calls = [c for c in runner.calls if Path(c[0]).name == "ffprobe"]
+        probed_paths = [call[-1] for call in ffprobe_calls]
+        self.assertEqual(probed_paths, [str(p) for p in reversed_paths])
+
+    def test_each_input_path_appears_exactly_once(self) -> None:
+        clip_paths = self._write_scenes(3)
+        timeline = self._build_timeline(clip_paths, scene_duration=3.0)
+        timeline_path = self._write_timeline(timeline)
+        runner = FakeRunner(probes=self._probes_for(clip_paths, duration=5.0))
+
+        build_reel(
+            PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir, timeline_path=timeline_path
+        )
+        ffmpeg_calls = [c for c in runner.calls if Path(c[0]).name == "ffmpeg"]
+        command = ffmpeg_calls[0]
+        for path in clip_paths:
+            self.assertEqual(command.count(str(path)), 1)
+
+
+class TimelineMusicTests(TimelineTestCase):
+    def test_timeline_music_does_not_auto_enable_mixing(self) -> None:
+        clip_paths = self._write_scenes(3)
+        timeline = self._build_timeline(clip_paths, scene_duration=5.0, music_path="/music/bg.mp3")
+        timeline_path = self._write_timeline(timeline)
+        runner = FakeRunner(probes=self._probes_for(clip_paths, duration=5.0))
+
+        def _fail_if_called(*args, **kwargs):
+            raise AssertionError("music_mixer_callable must not be called without --music")
+
+        result = build_reel(
+            PRODUCTION_DATE,
+            self.config,
+            runner=runner,
+            root=self.temp_dir,
+            timeline_path=timeline_path,
+            music_mixer_callable=_fail_if_called,
+        )
+        self.assertIsNone(result.music_mix)
+
+    def test_warning_emitted_when_timeline_music_exists_without_cli_music(self) -> None:
+        clip_paths = self._write_scenes(3)
+        timeline = self._build_timeline(clip_paths, scene_duration=5.0, music_path="/music/bg.mp3")
+        timeline_path = self._write_timeline(timeline)
+        runner = FakeRunner(probes=self._probes_for(clip_paths, duration=5.0))
+
+        result = build_reel(
+            PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir, timeline_path=timeline_path
+        )
+        self.assertTrue(any("bg.mp3" in w for w in result.timeline["warnings"]))
+        self.assertTrue(any("bg.mp3" in w for w in result.warnings))
+
+    def test_cli_music_overrides_timeline_music(self) -> None:
+        clip_paths = self._write_scenes(3)
+        timeline = self._build_timeline(clip_paths, scene_duration=5.0, music_path="/music/timeline-track.mp3")
+        timeline_path = self._write_timeline(timeline)
+        cli_music_path = self.temp_dir / "cli-music.mp3"
+        cli_music_path.write_bytes(b"y" * 100)
+
+        intermediate_path = self.config.reel_without_music_path(PRODUCTION_DATE, root=self.temp_dir)
+        probes = self._probes_for(clip_paths, duration=5.0)
+        probes[str(intermediate_path.resolve())] = _music_video_probe_json()
+        probes[str(cli_music_path.resolve())] = _music_track_probe_json()
+        runner = FakeRunner(probes=probes)
+
+        result = build_reel(
+            PRODUCTION_DATE,
+            self.config,
+            runner=runner,
+            root=self.temp_dir,
+            timeline_path=timeline_path,
+            music_path=cli_music_path,
+            music_mixer_callable=FakeMixer(),
+        )
+        self.assertEqual(result.music_mix["music_path"], str(cli_music_path))
+
+    def test_conflict_warning_recorded_when_cli_and_timeline_music_differ(self) -> None:
+        clip_paths = self._write_scenes(3)
+        timeline = self._build_timeline(clip_paths, scene_duration=5.0, music_path="/music/timeline-track.mp3")
+        timeline_path = self._write_timeline(timeline)
+        cli_music_path = self.temp_dir / "cli-music.mp3"
+        cli_music_path.write_bytes(b"y" * 100)
+
+        intermediate_path = self.config.reel_without_music_path(PRODUCTION_DATE, root=self.temp_dir)
+        probes = self._probes_for(clip_paths, duration=5.0)
+        probes[str(intermediate_path.resolve())] = _music_video_probe_json()
+        probes[str(cli_music_path.resolve())] = _music_track_probe_json()
+        runner = FakeRunner(probes=probes)
+
+        result = build_reel(
+            PRODUCTION_DATE,
+            self.config,
+            runner=runner,
+            root=self.temp_dir,
+            timeline_path=timeline_path,
+            music_path=cli_music_path,
+            music_mixer_callable=FakeMixer(),
+        )
+        self.assertTrue(any("authoritative" in w for w in result.timeline["warnings"]))
+
+    def test_existing_music_mixer_flow_unchanged_with_timeline(self) -> None:
+        clip_paths = self._write_scenes(3)
+        timeline = self._build_timeline(clip_paths, scene_duration=5.0)
+        timeline_path = self._write_timeline(timeline)
+        music_path = self.temp_dir / "music.mp3"
+        music_path.write_bytes(b"y" * 100)
+
+        intermediate_path = self.config.reel_without_music_path(PRODUCTION_DATE, root=self.temp_dir)
+        final_path = self.config.reel_final_path(PRODUCTION_DATE, root=self.temp_dir)
+        probes = self._probes_for(clip_paths, duration=5.0)
+        probes[str(intermediate_path.resolve())] = _music_video_probe_json()
+        probes[str(music_path.resolve())] = _music_track_probe_json()
+        runner = FakeRunner(probes=probes)
+
+        result = build_reel(
+            PRODUCTION_DATE,
+            self.config,
+            runner=runner,
+            root=self.temp_dir,
+            timeline_path=timeline_path,
+            music_path=music_path,
+        )
+        self.assertTrue(final_path.is_file())
+        self.assertEqual(result.output_path, str(final_path))
+        self.assertEqual(result.music_mix["status"], "success")
+
+
+class TimelineBuildLogTests(TimelineTestCase):
+    def test_timeline_disabled_field_without_timeline(self) -> None:
+        clip_paths = self._write_five_scenes()
+        runner = FakeRunner(probes=self._probes_for(clip_paths))
+        build_reel(PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir)
+
+        log_path = self.config.build_log_path(PRODUCTION_DATE, root=self.temp_dir)
+        payload = json.loads(log_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["timeline"], {"enabled": False})
+
+    def test_successful_timeline_fields_written(self) -> None:
+        clip_paths = self._write_scenes(3)
+        timeline = self._build_timeline(clip_paths, scene_duration=5.0)
+        timeline_path = self._write_timeline(timeline)
+        runner = FakeRunner(probes=self._probes_for(clip_paths, duration=5.0))
+
+        build_reel(
+            PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir, timeline_path=timeline_path
+        )
+        log_path = self.config.build_log_path(PRODUCTION_DATE, root=self.temp_dir)
+        payload = json.loads(log_path.read_text(encoding="utf-8"))
+        timeline_info = payload["timeline"]
+        for field_name in (
+            "enabled",
+            "timeline_path",
+            "timeline_id",
+            "schema_version",
+            "validation_passed",
+            "production_date_match",
+            "video_clip_count",
+            "ignored_disabled_clips",
+            "ignored_tracks",
+            "planned_duration_seconds",
+            "reconciled_duration_seconds",
+            "duration_tolerance_seconds",
+            "trimmed_clip_count",
+            "warnings",
+        ):
+            self.assertIn(field_name, timeline_info)
+        self.assertTrue(timeline_info["validation_passed"])
+        self.assertEqual(timeline_info["video_clip_count"], 3)
+
+    def test_failure_fields_written(self) -> None:
+        with self.assertRaises(TimelineIntegrationError):
+            build_reel(
+                PRODUCTION_DATE,
+                self.config,
+                runner=FakeRunner(),
+                root=self.temp_dir,
+                timeline_path=self.temp_dir / "does_not_exist.json",
+            )
+        log_path = self.config.build_log_path(PRODUCTION_DATE, root=self.temp_dir)
+        payload = json.loads(log_path.read_text(encoding="utf-8"))
+        timeline_info = payload["timeline"]
+        self.assertTrue(timeline_info["enabled"])
+        self.assertFalse(timeline_info["validation_passed"])
+        self.assertIn("error", timeline_info)
+
+    def test_trim_count_recorded(self) -> None:
+        clip_paths = self._write_scenes(2)
+        timeline = self._build_timeline(clip_paths, scene_duration=3.0)
+        timeline_path = self._write_timeline(timeline)
+        runner = FakeRunner(probes=self._probes_for(clip_paths, duration=5.0))
+
+        build_reel(
+            PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir, timeline_path=timeline_path
+        )
+        log_path = self.config.build_log_path(PRODUCTION_DATE, root=self.temp_dir)
+        payload = json.loads(log_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["timeline"]["trimmed_clip_count"], 2)
+
+    def test_duration_values_recorded(self) -> None:
+        clip_paths = self._write_scenes(2)
+        timeline = self._build_timeline(clip_paths, scene_duration=5.0)
+        timeline_path = self._write_timeline(timeline)
+        runner = FakeRunner(probes=self._probes_for(clip_paths, duration=5.0))
+
+        build_reel(
+            PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir, timeline_path=timeline_path
+        )
+        log_path = self.config.build_log_path(PRODUCTION_DATE, root=self.temp_dir)
+        payload = json.loads(log_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["timeline"]["planned_duration_seconds"], 10.0)
+        self.assertEqual(payload["timeline"]["reconciled_duration_seconds"], 10.0)
+
+    def test_original_build_log_fields_preserved_with_timeline(self) -> None:
+        clip_paths = self._write_scenes(3)
+        timeline = self._build_timeline(clip_paths, scene_duration=5.0)
+        timeline_path = self._write_timeline(timeline)
+        runner = FakeRunner(probes=self._probes_for(clip_paths, duration=5.0))
+
+        build_reel(
+            PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir, timeline_path=timeline_path
+        )
+        log_path = self.config.build_log_path(PRODUCTION_DATE, root=self.temp_dir)
+        payload = json.loads(log_path.read_text(encoding="utf-8"))
+        for field_name in (
+            "started_at",
+            "finished_at",
+            "production_date",
+            "input_clips",
+            "clip_durations",
+            "render_duration_seconds",
+            "ffmpeg_command",
+            "output_size_bytes",
+            "warnings",
+            "errors",
+            "result",
+            "engine_plan_type",
+            "engine_reasons",
+        ):
+            self.assertIn(field_name, payload)
+        self.assertEqual(payload["result"], "success")
+
+    def test_music_mix_section_preserved_with_timeline(self) -> None:
+        clip_paths = self._write_scenes(3)
+        timeline = self._build_timeline(clip_paths, scene_duration=5.0)
+        timeline_path = self._write_timeline(timeline)
+        music_path = self.temp_dir / "music.mp3"
+        music_path.write_bytes(b"y" * 100)
+
+        intermediate_path = self.config.reel_without_music_path(PRODUCTION_DATE, root=self.temp_dir)
+        probes = self._probes_for(clip_paths, duration=5.0)
+        probes[str(intermediate_path.resolve())] = _music_video_probe_json()
+        probes[str(music_path.resolve())] = _music_track_probe_json()
+        runner = FakeRunner(probes=probes)
+
+        build_reel(
+            PRODUCTION_DATE,
+            self.config,
+            runner=runner,
+            root=self.temp_dir,
+            timeline_path=timeline_path,
+            music_path=music_path,
+        )
+        log_path = self.config.build_log_path(PRODUCTION_DATE, root=self.temp_dir)
+        payload = json.loads(log_path.read_text(encoding="utf-8"))
+        self.assertTrue(payload["music_mix"]["enabled"])
+        self.assertEqual(payload["music_mix"]["status"], "success")
+
+
+class TimelineSafetyTests(TimelineTestCase):
+    def test_invalid_timeline_prevents_video_engine_call(self) -> None:
+        with self.assertRaises(TimelineIntegrationError):
+            build_reel(
+                PRODUCTION_DATE,
+                self.config,
+                runner=FakeRunner(),
+                root=self.temp_dir,
+                timeline_path=self.temp_dir / "does_not_exist.json",
+            )
+        output_path = self.config.reel_final_path(PRODUCTION_DATE, root=self.temp_dir)
+        self.assertFalse(output_path.exists())
+
+    def test_invalid_timeline_prevents_music_mixer_call(self) -> None:
+        music_path = self.temp_dir / "music.mp3"
+        music_path.write_bytes(b"y" * 100)
+
+        def _fail_if_called(*args, **kwargs):
+            raise AssertionError("music_mixer_callable must not be called when the timeline is invalid")
+
+        with self.assertRaises(TimelineIntegrationError):
+            build_reel(
+                PRODUCTION_DATE,
+                self.config,
+                runner=FakeRunner(),
+                root=self.temp_dir,
+                timeline_path=self.temp_dir / "does_not_exist.json",
+                music_path=music_path,
+                music_mixer_callable=_fail_if_called,
+            )
+
+    def test_no_fallback_to_directory_discovery_on_invalid_timeline(self) -> None:
+        # Real scene files exist on disk (discoverable the old way), but
+        # the --timeline file is invalid -- must fail, never silently
+        # fall back to scanning the directory.
+        self._write_five_scenes()
+        with self.assertRaises(TimelineIntegrationError):
+            build_reel(
+                PRODUCTION_DATE,
+                self.config,
+                runner=FakeRunner(),
+                root=self.temp_dir,
+                timeline_path=self.temp_dir / "does_not_exist.json",
+            )
+
+    def test_no_automatic_retry_on_reconciliation_failure(self) -> None:
+        clip_paths = self._write_scenes(2)
+        timeline = self._build_timeline(clip_paths, scene_duration=5.0)
+        timeline_path = self._write_timeline(timeline)
+        runner = FakeRunner(probes=self._probes_for(clip_paths, duration=3.0))
+
+        with self.assertRaises(TimelineIntegrationError):
+            build_reel(
+                PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir, timeline_path=timeline_path
+            )
+        ffmpeg_calls = [c for c in runner.calls if Path(c[0]).name == "ffmpeg"]
+        self.assertEqual(ffmpeg_calls, [])
+
+    def test_no_input_media_mutation(self) -> None:
+        clip_paths = self._write_scenes(3)
+        original_bytes = [path.read_bytes() for path in clip_paths]
+        timeline = self._build_timeline(clip_paths, scene_duration=5.0)
+        timeline_path = self._write_timeline(timeline)
+        runner = FakeRunner(probes=self._probes_for(clip_paths, duration=5.0))
+
+        build_reel(
+            PRODUCTION_DATE, self.config, runner=runner, root=self.temp_dir, timeline_path=timeline_path
+        )
+        for path, original in zip(clip_paths, original_bytes):
+            self.assertEqual(path.read_bytes(), original)
+
+
+class TimelineIntegrationStructuralSafetyTests(unittest.TestCase):
+    def test_no_playwright_import(self) -> None:
+        for line in MODULE_SOURCE.splitlines():
+            stripped = line.strip()
+            self.assertFalse(stripped.startswith("import playwright"))
+            self.assertFalse(stripped.startswith("from playwright"))
+
+    def test_no_publishing_or_social_import(self) -> None:
+        for line in MODULE_SOURCE.splitlines():
+            stripped = line.strip()
+            self.assertFalse(stripped.startswith("from src.publishing"))
+            self.assertFalse(stripped.startswith("from .publishing"))
+            self.assertFalse(stripped.startswith("from src.social"))
+            self.assertFalse(stripped.startswith("from .social"))
+
+    def test_no_automatic_timeline_discovery(self) -> None:
+        for forbidden in ("glob(", "rglob(", "listdir(", "default_timeline"):
+            self.assertNotIn(forbidden, MODULE_SOURCE)
 
 
 class MusicIntegrationStructuralSafetyTests(unittest.TestCase):

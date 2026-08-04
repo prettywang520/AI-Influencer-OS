@@ -78,3 +78,29 @@ integration:
   # diagnosis" requirement unconditionally.
   preserve_intermediate_on_music_failure: true
   cleanup_intermediate_on_success: true
+
+# ---------------------------------------------------------------------------
+# Phase 11C.1 — Timeline -> Reel Builder Integration
+# ---------------------------------------------------------------------------
+#
+# Only takes effect when --timeline is supplied (or timeline_path is passed
+# to build_reel()). Without --timeline, none of this is read and behavior
+# is identical to Phase 11B.1. See src/timeline_engine.py for the actual
+# timeline model/validator this integration consumes -- Reel Builder never
+# duplicates its schema or validation logic, only reconciles the timeline's
+# planned durations against real ffprobe data before planning a render.
+timeline_integration:
+  enabled: true
+  # When true, a timeline whose production_date differs from --date is
+  # rejected before any render planning. A timeline with no
+  # production_date recorded is never rejected by this check.
+  production_date_must_match: true
+  duration_tolerance_seconds: 0.05
+  # When false, any clip that needs trimming (source_in > 0 or
+  # source_out short of the actual file duration) is rejected instead of
+  # forcing a normalized render.
+  allow_trimmed_clips: true
+  reject_active_transitions: true
+  reject_non_unit_playback_rate: true
+  reject_gaps: true
+  reject_overlaps: true
