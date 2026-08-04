@@ -1,0 +1,55 @@
+version: "1.0"
+
+# AIKO OS — Media Inspector (Phase 11A.1)
+#
+# Purely local, read-only ffprobe metadata extraction. Never renders,
+# concatenates, transcodes, normalizes, publishes, or uploads anything,
+# and never modifies an inspected media file. Intended to be shared by
+# Reel Builder, a future Video Validator, Story video validation, and
+# publisher preflight checks — see the Phase 11A.2 integration
+# recommendation for how Reel Builder specifically could adopt this.
+
+ffprobe:
+  binary: "ffprobe"
+  timeout_seconds: 30
+
+supported_extensions:
+  video:
+    - ".mp4"
+    - ".mov"
+    - ".m4v"
+    - ".webm"
+    - ".mkv"
+  audio:
+    - ".mp3"
+    - ".wav"
+    - ".m4a"
+    - ".aac"
+    - ".flac"
+
+inspection:
+  # If a stream's own duration differs from the container (format-level)
+  # duration by more than this many seconds, a
+  # container_stream_duration_mismatch warning is added. Never fails
+  # inspection by itself.
+  container_stream_duration_warning_seconds: 0.5
+
+  # If a video stream's avg_frame_rate and r_frame_rate normalize to
+  # values differing by more than this fraction of the r_frame_rate,
+  # a variable_frame_rate_suspected warning is added.
+  variable_fps_tolerance: 0.05
+
+  # --directory --recursive controls whether subdirectories are walked;
+  # this separately controls whether *symlinked* subdirectories are
+  # followed while doing so. Off by default to avoid inspecting outside
+  # the intended tree via a stray symlink.
+  follow_directory_symlinks: false
+
+report:
+  schema_version: "1.0"
+  # --output always requires --force to overwrite an existing report
+  # file; this flag exists so the policy is an explicit, readable config
+  # value rather than an unwritten assumption (same documentation
+  # convention as config/publishing/publisher.yaml's
+  # recovery.require_confirm_for_mutations).
+  overwrite_requires_force: true

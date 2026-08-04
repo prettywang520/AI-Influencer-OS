@@ -1,0 +1,57 @@
+version: "1.0"
+
+# AIKO OS — Reel Builder Engine (Phase 11A)
+#
+# Purely local ffmpeg-based video assembly: concatenates the generated
+# Reel scene clips for one production date into a single
+# output/<date>/videos/reel_final.mp4. Never publishes anything, never
+# touches Instagram, never uses Playwright, never imports anything from
+# src/publishing/.
+
+# Number of Reel scene clips expected for one production date. The
+# Reel Builder refuses to run (missing scene error) if fewer clips than
+# this are found, and refuses (duplicate scene error) if a clip index
+# appears more than once.
+scene_count: 5
+
+rendering:
+  # Only "none" is implemented in Phase 11A (straight, hard-cut
+  # concatenation in scene-number order). Any other value is rejected
+  # with a clear "not yet implemented" error rather than silently
+  # ignored — a future phase can add real crossfade support.
+  transition: none
+  transition_duration: 0.35
+
+  fps: 30
+  video_codec: libx264
+  audio_codec: aac
+  video_bitrate: 10M
+
+  # Reserved for a future phase that mixes a background music track
+  # under the concatenated Reel. No music file is read or mixed in
+  # Phase 11A — this value is loaded and stored in BuilderConfig but has
+  # no effect on the render yet.
+  music_volume: 0.20
+
+  # When the discovered scene clips do not all share the exact same
+  # resolution/fps, the builder normally refuses ("mixed resolutions"/
+  # "mixed fps") rather than guess. Setting these to true instead
+  # switches the render to a filter_complex scale+fps+concat pipeline
+  # (re-encoded, not lossless) that normalizes every clip to the
+  # settings above before concatenating.
+  normalize_resolution: true
+  normalize_fps: true
+
+paths:
+  # All relative to the app root (10_apps/claude_runtime), with {date}
+  # substituted for the --date argument.
+  reel_scenes_dir_template: "output/{date}/videos/reel_scenes"
+  reel_final_file_template: "output/{date}/videos/reel_final.mp4"
+  build_log_file_template: "output/{date}/videos/build_log.json"
+
+ffmpeg:
+  ffmpeg_binary: "ffmpeg"
+  ffprobe_binary: "ffprobe"
+  # Wall-clock budget for a single ffmpeg/ffprobe subprocess call before
+  # it is killed and treated as a failure.
+  timeout_seconds: 600

@@ -1,0 +1,117 @@
+version: "1.0"
+
+# AIKO OS — Video Validator (Phase 11A.2)
+#
+# Purely local validation of already-produced video files against a
+# named publishing profile. Never renders, transcodes, publishes, or
+# uploads anything. Every technical fact this module judges comes from
+# Media Inspector (src/media_inspector.py) — this file only carries
+# thresholds/allowed-values/penalties, never ffprobe selectors.
+
+media_inspector:
+  # Path to an alternate config/media/inspector.yaml. null means "use
+  # Media Inspector's own default config path"
+  # (config/media/inspector.yaml).
+  config_path: null
+
+scoring:
+  starting_score: 100
+  minimum_score: 0
+
+# Future profiles may include: instagram_story, youtube_short, tiktok.
+# Only instagram_reel is implemented in Phase 11A.2.
+profiles:
+  instagram_reel:
+    duration:
+      min_seconds: 3
+      max_seconds: 90
+      penalty: 25
+
+    resolution:
+      min_width: 720
+      min_height: 720
+      penalty: 20
+
+    aspect_ratio:
+      # Parsed as a "W:H" string and compared against
+      # MediaInfo.aspect_ratio_float (already rotation-aware).
+      target: "9:16"
+      tolerance: 0.05
+      penalty: 10
+
+    fps:
+      allowed:
+        - 23.976
+        - 24
+        - 25
+        - 29.97
+        - 30
+        - 50
+        - 59.94
+        - 60
+      tolerance: 0.05
+      penalty: 10
+
+    video_codec:
+      allowed:
+        - "h264"
+        - "hevc"
+      penalty: 20
+
+    container:
+      # Substring match against MediaInfo.format_name (ffprobe reports
+      # this as a comma-separated list, e.g.
+      # "mov,mp4,m4a,3gp,3g2,mj2").
+      allowed_format_name_substrings:
+        - "mp4"
+        - "mov"
+      penalty: 10
+
+    # Advisory only (WARNING, never FAIL) — Instagram re-transcodes
+    # uploaded video regardless of source bitrate.
+    bitrate:
+      min_bps: 500000
+      max_bps: 25000000
+      penalty: 10
+
+    audio:
+      required: true
+      allowed_codecs:
+        - "aac"
+      penalty: 15
+
+    # Advisory only (WARNING) — audio is re-encoded on upload.
+    audio_sample_rate:
+      allowed:
+        - 44100
+        - 48000
+      penalty: 5
+
+    # Advisory only (WARNING) — audio is re-encoded on upload.
+    audio_channels:
+      allowed:
+        - 1
+        - 2
+      penalty: 5
+
+    # Advisory only (WARNING) — rotation metadata still displays
+    # correctly; this just flags it for manual awareness.
+    rotation:
+      allowed:
+        - 0
+      penalty: 5
+
+    # Advisory only (WARNING) — a non-faststart moov atom costs upload/
+    # processing efficiency, it does not block acceptance. Only checked
+    # for ISO-BMFF/QuickTime containers; meaningless for .webm/.mkv.
+    moov_atom:
+      required_position: "start"
+      applicable_extensions:
+        - ".mp4"
+        - ".mov"
+        - ".m4v"
+      penalty: 5
+
+    vertical_orientation:
+      required: true
+      penalty: 15
