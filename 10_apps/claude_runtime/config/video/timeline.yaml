@@ -1,0 +1,73 @@
+version: "1.0"
+
+# AIKO OS — Timeline Engine (Phase 11C)
+#
+# Reusable, platform-neutral timeline model and planner for short-form
+# video editing: describes ordered clips, exact start/end times, trim
+# ranges, track structure, background music placement, and room for a
+# future subtitle/logo/outro track. Plans and validates timelines only —
+# never calls ffmpeg or ffprobe, never renders, never inspects real
+# media (no src/media_inspector.py call either), never publishes.
+# Scene durations come only from a sidecar file, production_manifest.json,
+# or a configured default — never from probing the video itself.
+
+schema_version: "1.0"
+
+timeline:
+  # Default frame of reference only — Phase 11C never verifies a clip's
+  # real fps/resolution against these values (that remains Video
+  # Engine's job in a future integration phase).
+  fps: 30
+  width: 1080
+  height: 1920
+  validation_tolerance_seconds: 0.01
+
+scene_discovery:
+  accept_scene_prefixed_names: true
+  accept_plain_numbered_names: true
+  require_sequential_numbers: true
+  supported_extensions:
+    - .mp4
+    - .mov
+    - .m4v
+  # When false (default), a file with an unsupported extension is
+  # silently skipped during discovery — matching src/reel_builder.py's
+  # existing scene-discovery convention. When true, any such file
+  # causes discovery to fail loudly instead.
+  reject_unsupported_extensions: false
+
+duration_source:
+  # Walked in order for every scene. "sidecar" reads
+  # scene_NN.json ({"duration_seconds": N}) beside the scene file.
+  # "manifest" reads production_manifest.json's reel_tasks[] (matched by
+  # scene_number). "default" uses default_scene_duration_seconds below
+  # and always records a warning when used.
+  priority:
+    - sidecar
+    - manifest
+    - default
+  allow_default_duration: true
+  default_scene_duration_seconds: 2.5
+
+duration_limit:
+  # "fail": exceeding a supplied --duration-limit raises an error.
+  # allow_trim_final_clip: when true, the final clip alone is trimmed to
+  # fit exactly instead of failing; earlier clips are never touched.
+  policy: fail
+  allow_trim_final_clip: false
+
+music:
+  # Real music duration is never inspected in this phase, so `loop` is
+  # always taken from this default rather than computed.
+  loop: true
+  volume: 0.20
+  fade_in_seconds: 0.50
+  fade_out_seconds: 1.00
+  ducking_mode: none
+
+validation:
+  allow_video_gaps: false
+  allow_audio_overlap: false
+
+output:
+  overwrite_requires_force: true
