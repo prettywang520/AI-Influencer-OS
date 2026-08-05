@@ -1,0 +1,67 @@
+version: "1.0"
+
+# AIKO OS — Subtitle Render Engine (Phase 11F.1)
+#
+# The first module in this pipeline permitted to burn real subtitles
+# into video. Owns its own ffmpeg binary configuration -- independent
+# of config/video/engine.yaml (video_engine.py owns concat-specific
+# execution only; its command model has no room for a single-input
+# subtitle filter graph, so this module builds/executes its own
+# focused command rather than bending video_engine.py's ConcatPlan).
+# Never downloads fonts, never parses/rewrites .ass file content,
+# never publishes or uploads.
+
+subtitle_render:
+  schema_version: "1.0"
+  supported_modes: [ass, drawtext]
+  default_mode: ass
+  allow_mode_fallback: false
+
+ffmpeg:
+  binary: ffmpeg
+  timeout_seconds: 300
+  loglevel: error
+  hide_banner: true
+
+video:
+  codec: libx264
+  preset: medium
+  crf: 18
+  pixel_format: yuv420p
+  copy_audio: true
+  audio_codec_when_reencode_required: aac
+  audio_bitrate: 192k
+  faststart: true
+
+ass:
+  supported_extensions: [.ass]
+  allow_fontconfig_resolution: false
+  require_fontsdir_when_custom_fonts: true
+
+drawtext:
+  require_font_file: true
+  use_textfile_mode: false
+  box_enabled_default: false
+  default_box_color: "#00000000"
+  strict_canvas_bounds: true
+  # Pixel margin used when a cue only specifies an anchor (no explicit
+  # x/y) -- e.g. bottom_center becomes x=(w-text_w)/2:y=h-text_h-margin.
+  anchor_margin_pixels: 40
+
+fonts:
+  supported_extensions: [.ttf, .otf, .ttc]
+  fallback_font_path: null
+  family_map: {}
+
+output:
+  overwrite_requires_force: true
+  verify_non_zero_bytes: true
+
+temporary:
+  directory_name: ".subtitle_render_tmp"
+  cleanup_on_success: true
+  preserve_on_failure: true
+
+diagnostics:
+  write_log: true
+  log_filename_suffix: "_subtitle_render_log.json"

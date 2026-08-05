@@ -19,10 +19,15 @@ execution:
   dry_run_default: true
   allow_partial_execution_default: false
   # Filename suffix inserted before the extension of --output to name
-  # the intermediate video-only file when a music pass follows it
-  # (mirrors reel_builder.py/Phase 11B.1's own intermediate/final
-  # naming convention).
+  # the intermediate video-only file when a later pass (subtitle or
+  # music) still needs to run after it (mirrors reel_builder.py/Phase
+  # 11B.1's own intermediate/final naming convention).
   intermediate_filename_suffix: "_video_only"
+  # Phase 11F.1 -- filename suffix for the intermediate file written
+  # after a subtitle pass when a later pass (music) still follows it.
+  # Unused (and therefore never written) for plans with no subtitle
+  # pass, or where the subtitle pass is the last producing pass.
+  subtitle_intermediate_filename_suffix: "_subtitled"
   log_filename_suffix: "_renderer_execution_log.json"
 
 output:

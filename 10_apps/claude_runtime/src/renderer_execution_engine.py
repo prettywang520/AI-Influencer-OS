@@ -9,25 +9,35 @@ from typing import Any
 
 import yaml
 
-from . import media_inspector, music_mixer, renderer_plan_engine, timeline_engine, video_engine
+from . import (
+    media_inspector,
+    music_mixer,
+    overlay_plan_engine,
+    renderer_plan_engine,
+    subtitle_render_engine,
+    timeline_engine,
+    video_engine,
+)
 
 # Phase 11F — Renderer Execution Engine. The first module in this
 # pipeline permitted to actually invoke ffmpeg/ffprobe -- but it does
-# so exclusively by orchestrating three already-built, already-tested
-# engines (video_engine.py, music_mixer.py, media_inspector.py), never
-# by constructing a raw ffmpeg command itself. It reads an already-
-# validated renderer_plan.json (+ the timeline.json it references) and
-# executes the "video" and "music" passes for real. "subtitle"/
-# "overlay" passes are detected but never executed here (real font/
-# asset resolution is new capability this codebase has never had --
-# deferred to a recommended Phase 11F.1): by default this fails loudly
-# rather than silently producing a video without its planned overlays;
-# --allow-partial-execution is required to proceed anyway, and even
-# then those passes are only ever recorded as "skipped", never faked.
-# --dry-run is the implicit CLI default -- ffmpeg is only actually
-# invoked when --execute is explicitly given. This module never
-# publishes, uploads, downloads fonts/assets, or modifies the source
-# renderer_plan.json/timeline.json files it reads.
+# so exclusively by orchestrating already-built, already-tested engines
+# (video_engine.py, music_mixer.py, media_inspector.py,
+# subtitle_render_engine.py), never by constructing a raw ffmpeg
+# command itself. It reads an already-validated renderer_plan.json (+
+# the timeline.json and overlay_plan.json it references) and executes
+# the "video"/"music" passes for real, plus (Phase 11F.1) "subtitle"
+# passes whose renderer hint is "ass" or "drawtext" -- delegated to
+# subtitle_render_engine.py. "overlay" passes, and "subtitle" passes
+# with any other hint, are detected but never executed here: by
+# default this fails loudly rather than silently producing a video
+# without its planned overlays; --allow-partial-execution is required
+# to proceed anyway, and even then those passes are only ever recorded
+# as "skipped", never faked. --dry-run is the implicit CLI default --
+# ffmpeg is only actually invoked when --execute is explicitly given.
+# This module never publishes, uploads, downloads fonts/assets, or
+# modifies the source renderer_plan.json/timeline.json/overlay_plan.json
+# files it reads.
 
 DEFAULT_RENDERER_EXECUTION_CONFIG_RELATIVE_PATH = Path("config") / "video" / "renderer_execution.yaml"
 
@@ -88,6 +98,13 @@ class RendererExecutionMusicError(RendererExecutionEngineError):
     """Raised when music_mixer.py execution fails."""
 
 
+class RendererExecutionSubtitleError(RendererExecutionEngineError):
+    """Raised when subtitle_render_engine.py planning/execution fails,
+    or a subtitle pass has no resolvable subtitle asset (missing
+    subtitle_file asset for an ass hint, or an empty overlay set for a
+    drawtext hint)."""
+
+
 class RendererExecutionOutputExistsError(RendererExecutionEngineError):
     """Raised when --output already exists and --force was not given."""
 
@@ -112,6 +129,7 @@ class RendererExecutionConfig:
     dry_run_default: bool = True
     allow_partial_execution_default: bool = False
     intermediate_filename_suffix: str = "_video_only"
+    subtitle_intermediate_filename_suffix: str = "_subtitled"
     log_filename_suffix: str = "_renderer_execution_log.json"
     overwrite_requires_force: bool = True
     atomic_write: bool = True
@@ -149,6 +167,9 @@ def load_renderer_execution_config(config_path: str | Path | None = None) -> Ren
         dry_run_default=bool(execution_section.get("dry_run_default", True)),
         allow_partial_execution_default=bool(execution_section.get("allow_partial_execution_default", False)),
         intermediate_filename_suffix=str(execution_section.get("intermediate_filename_suffix", "_video_only")),
+        subtitle_intermediate_filename_suffix=str(
+            execution_section.get("subtitle_intermediate_filename_suffix", "_subtitled")
+        ),
         log_filename_suffix=str(execution_section.get("log_filename_suffix", "_renderer_execution_log.json")),
         overwrite_requires_force=bool(output_section.get("overwrite_requires_force", True)),
         atomic_write=bool(output_section.get("atomic_write", True)),
@@ -171,6 +192,9 @@ class PassExecutionResult:
     return_code: int | None = None
     warnings: list[str] = field(default_factory=list)
     error: str | None = None
+    # Set only for subtitle passes: path to subtitle_render_engine.py's
+    # own written diagnostic log for this pass, if any.
+    diagnostic_log: str | None = None
 
 
 @dataclass(slots=True)
@@ -389,6 +413,160 @@ def _execute_music_pass(
 
 
 # ---------------------------------------------------------------------------
+# Subtitle pass — real execution via subtitle_render_engine.py, the
+# first phase permitted to burn subtitles into video (Phase 11F.1).
+# Only "ass"/"drawtext" renderer hints are executable here; any other
+# hint is treated as unsupported by the caller (see the pre-flight
+# check and pass-loop dispatch in execute_renderer_plan()).
+# ---------------------------------------------------------------------------
+
+
+def _find_hint_for_pass(
+    plan: renderer_plan_engine.RendererPlan, pass_id: str
+) -> renderer_plan_engine.RendererHint | None:
+    return next((hint for hint in plan.hints if hint.target_id == pass_id), None)
+
+
+def _planned_overlay_to_drawtext_cue(
+    overlay: overlay_plan_engine.PlannedOverlay,
+) -> subtitle_render_engine.DrawTextCue:
+    """Adapter: an Overlay Plan Engine PlannedOverlay -> a Subtitle
+    Render Engine DrawTextCue. Read-only over the already-planned
+    overlay -- never recalculates position/style, only reshapes it."""
+    style = overlay.style_snapshot
+    position = overlay.position
+    return subtitle_render_engine.DrawTextCue(
+        text=overlay.content,
+        start_seconds=overlay.timeline_start_seconds,
+        end_seconds=overlay.timeline_end_seconds,
+        font_family=style.font_family,
+        font_size=style.font_size if style.font_size is not None else 48.0,
+        font_color=style.primary_color or "#FFFFFF",
+        outline_color=style.outline_color or "#000000",
+        outline_width=style.outline_width if style.outline_width is not None else 2.0,
+        x=position.x,
+        y=position.y,
+        anchor=position.anchor if position.x is None or position.y is None else None,
+        opacity=style.opacity,
+    )
+
+
+def _execute_subtitle_pass(
+    pass_: renderer_plan_engine.RendererPass,
+    plan: renderer_plan_engine.RendererPlan,
+    hint: renderer_plan_engine.RendererHint,
+    overlay_plan: overlay_plan_engine.OverlayPlan,
+    subtitle_render_config: subtitle_render_engine.SubtitleRenderConfig,
+    *,
+    video_input: Path | None,
+    output_path: Path,
+    canvas_width: int,
+    canvas_height: int,
+    dry_run: bool,
+    force: bool,
+    runner: Any,
+) -> PassExecutionResult:
+    if dry_run and (video_input is None or not video_input.exists()):
+        # The real subtitle command depends on reading the preceding
+        # pass's real output, which does not exist yet in dry-run --
+        # mirrors _execute_music_pass()'s own dry-run honesty limit:
+        # only the request parameters can be shown, not the resolved
+        # ffmpeg command.
+        return PassExecutionResult(
+            pass_id=pass_.pass_id, pass_type=pass_.pass_type, status="dry_run",
+            command=None, output_path=str(output_path),
+            warnings=[
+                "subtitle pass command depends on a preceding pass's real output; "
+                "not resolved in dry-run"
+            ],
+        )
+
+    if video_input is None:
+        raise RendererExecutionSubtitleError(
+            f"Pass {pass_.pass_id} has no video input available (no preceding video/subtitle pass output)"
+        )
+
+    if not plan.subtitle_tracks:
+        raise RendererExecutionSubtitleError(f"Pass {pass_.pass_id} is a subtitle pass but plan has no subtitle_tracks")
+    subtitle_track = plan.subtitle_tracks[0]
+
+    if hint.hint_type == renderer_plan_engine.RendererHintType.ASS:
+        asset_by_id = {asset.asset_id: asset for asset in plan.assets}
+        ass_asset = next(
+            (
+                asset_by_id[asset_id]
+                for asset_id in subtitle_track.asset_ids
+                if asset_id in asset_by_id
+                and asset_by_id[asset_id].asset_type == renderer_plan_engine.AssetType.SUBTITLE_FILE
+            ),
+            None,
+        )
+        if ass_asset is None:
+            raise RendererExecutionSubtitleError(
+                f"Pass {pass_.pass_id} has an 'ass' hint but no subtitle_file asset was found "
+                "among the subtitle track's asset_ids"
+            )
+        request_kwargs: dict[str, Any] = {
+            "mode": subtitle_render_engine.SubtitleRenderMode.ASS,
+            "ass_path": ass_asset.source_path,
+        }
+    elif hint.hint_type == renderer_plan_engine.RendererHintType.DRAWTEXT:
+        overlay_by_id = {overlay.overlay_id: overlay for overlay in overlay_plan.overlays}
+        cues = [
+            _planned_overlay_to_drawtext_cue(overlay_by_id[overlay_id])
+            for overlay_id in subtitle_track.overlay_ids
+            if overlay_id in overlay_by_id and overlay_by_id[overlay_id].enabled
+        ]
+        if not cues:
+            raise RendererExecutionSubtitleError(
+                f"Pass {pass_.pass_id} has a 'drawtext' hint but no enabled subtitle overlays were found"
+            )
+        request_kwargs = {"mode": subtitle_render_engine.SubtitleRenderMode.DRAWTEXT, "cues": cues}
+    else:
+        raise RendererExecutionSubtitleError(
+            f"Pass {pass_.pass_id} has an unsupported subtitle hint {hint.hint_type!r}"
+        )
+
+    try:
+        request = subtitle_render_engine.build_subtitle_render_request(
+            video_path=video_input, output_path=output_path, force=force,
+            canvas_width=canvas_width, canvas_height=canvas_height,
+            config=subtitle_render_config, **request_kwargs,
+        )
+    except subtitle_render_engine.SubtitleRenderEngineError as exc:
+        raise RendererExecutionSubtitleError(f"Failed to build subtitle render request: {exc}") from exc
+
+    if dry_run:
+        subtitle_plan = subtitle_render_engine.build_subtitle_render_plan(request, subtitle_render_config)
+        return PassExecutionResult(
+            pass_id=pass_.pass_id, pass_type=pass_.pass_type, status="dry_run",
+            command=subtitle_plan.command, output_path=str(output_path),
+        )
+
+    runner_kwargs = {"runner": runner} if runner is not None else {}
+    try:
+        subtitle_result = subtitle_render_engine.execute_subtitle_render_plan(
+            request, subtitle_render_config, **runner_kwargs
+        )
+    except subtitle_render_engine.SubtitleRenderEngineError as exc:
+        raise RendererExecutionSubtitleError(f"Subtitle pass execution failed: {exc}") from exc
+
+    diagnostic_log = None
+    if subtitle_render_config.diagnostics_write_log:
+        diagnostic_log = str(
+            output_path.with_name(f"{output_path.stem}{subtitle_render_config.diagnostics_log_filename_suffix}")
+        )
+
+    return PassExecutionResult(
+        pass_id=pass_.pass_id, pass_type=pass_.pass_type, status="executed",
+        command=subtitle_result.command, output_path=subtitle_result.output_video,
+        duration_seconds=subtitle_result.duration_seconds, return_code=subtitle_result.return_code,
+        warnings=list(subtitle_result.warnings), error=subtitle_result.error,
+        diagnostic_log=diagnostic_log,
+    )
+
+
+# ---------------------------------------------------------------------------
 # final_encode pass — verification only, no new ffmpeg call.
 # ---------------------------------------------------------------------------
 
@@ -427,6 +605,7 @@ def _execute_final_encode_pass(
 def execute_renderer_plan(
     renderer_plan_path: str | Path,
     timeline_path: str | Path,
+    overlay_plan_path: str | Path,
     config: RendererExecutionConfig,
     *,
     output_path: str | Path,
@@ -434,17 +613,28 @@ def execute_renderer_plan(
     allow_partial_execution: bool | None = None,
     force: bool = False,
     runner: Any = None,
+    subtitle_render_config: subtitle_render_engine.SubtitleRenderConfig | None = None,
 ) -> RendererExecutionResult:
     """
     runner=None (the default) lets each delegated engine
-    (media_inspector.py/video_engine.py/music_mixer.py) use its own
-    real default_runner -- each raises its own correctly-typed
-    NotFoundError family on a missing ffmpeg/ffprobe binary, which this
-    module's own except clauses already handle. Tests inject a single
-    shared FakeRunner explicitly instead.
+    (media_inspector.py/video_engine.py/music_mixer.py/
+    subtitle_render_engine.py) use its own real default_runner -- each
+    raises its own correctly-typed NotFoundError family on a missing
+    ffmpeg/ffprobe binary, which this module's own except clauses
+    already handle. Tests inject a single shared FakeRunner explicitly
+    instead.
+
+    subtitle_render_config=None (the default) loads the real
+    config/video/subtitle_render.yaml -- the same "None means use the
+    real loader" convention already used for engine_config/
+    inspector_config/music_config internally. Exposed as an explicit
+    parameter (unlike those) because font resolution genuinely depends
+    on filesystem fixtures a caller may need to point at test-specific
+    paths; not exposed via the CLI, which always uses the real config.
     """
     renderer_plan_path = Path(renderer_plan_path)
     timeline_path = Path(timeline_path)
+    overlay_plan_path = Path(overlay_plan_path)
     output_path = Path(output_path)
 
     effective_dry_run = config.dry_run_default if dry_run is None else dry_run
@@ -456,6 +646,8 @@ def execute_renderer_plan(
         raise UnsafeRendererExecutionOutputError("--output must not be the same path as --renderer-plan")
     if output_path.resolve() == timeline_path.resolve():
         raise UnsafeRendererExecutionOutputError("--output must not be the same path as --timeline")
+    if output_path.resolve() == overlay_plan_path.resolve():
+        raise UnsafeRendererExecutionOutputError("--output must not be the same path as --overlay-plan")
 
     started_at = _now_iso()
 
@@ -488,70 +680,131 @@ def execute_renderer_plan(
             f"{timeline.timeline_id!r}"
         )
 
+    try:
+        overlay_plan = overlay_plan_engine.load_overlay_plan(overlay_plan_path)
+    except overlay_plan_engine.OverlayPlanEngineError as exc:
+        raise RendererExecutionPlanLoadError(f"Failed to load overlay plan {overlay_plan_path}: {exc}") from exc
+
+    overlay_plan_config = overlay_plan_engine.load_overlay_plan_config()
+    overlay_plan_result = overlay_plan_engine.validate_overlay_plan(overlay_plan, overlay_plan_config, timeline=timeline)
+    if not overlay_plan_result.passed:
+        raise RendererExecutionPlanLoadError(
+            f"Overlay plan {overlay_plan_path} failed validation: {'; '.join(overlay_plan_result.errors)}"
+        )
+
+    if plan.overlay_plan_id != overlay_plan.plan_id:
+        raise RendererExecutionPlanMismatchError(
+            f"Renderer plan overlay_plan_id {plan.overlay_plan_id!r} does not match overlay "
+            f"plan_id {overlay_plan.plan_id!r}"
+        )
+
     if not effective_dry_run and output_path.exists() and not force:
         raise RendererExecutionOutputExistsError(f"{output_path} already exists; pass force=True to overwrite.")
 
-    # Checked up front, before any pass executes: a subtitle/overlay
-    # pass discovered only *after* the video pass had already written
-    # directly to the final --output path would leave a misleading
-    # partial file there. Failing before touching anything is the only
-    # way to guarantee that never happens.
+    # Checked up front, before any pass executes: a pass discovered only
+    # *after* an earlier pass had already written directly to the final
+    # --output path would leave a misleading partial file there. Failing
+    # before touching anything is the only way to guarantee that never
+    # happens. A subtitle pass is supported only when its renderer hint
+    # is "ass"/"drawtext" (Phase 11F.1); an "overlay" pass, or a
+    # subtitle pass with any other hint, remains unsupported.
+    def _pass_is_supported(pass_: renderer_plan_engine.RendererPass) -> bool:
+        if pass_.pass_type == renderer_plan_engine.RenderPassType.OVERLAY:
+            return False
+        if pass_.pass_type == renderer_plan_engine.RenderPassType.SUBTITLE:
+            hint = _find_hint_for_pass(plan, pass_.pass_id)
+            return hint is not None and hint.hint_type in (
+                renderer_plan_engine.RendererHintType.ASS,
+                renderer_plan_engine.RendererHintType.DRAWTEXT,
+            )
+        return True
+
     unsupported_passes = [
         pass_
         for pass_ in plan.passes
-        if pass_.pass_type
-        in (renderer_plan_engine.RenderPassType.SUBTITLE, renderer_plan_engine.RenderPassType.OVERLAY)
+        if pass_.pass_type in (renderer_plan_engine.RenderPassType.SUBTITLE, renderer_plan_engine.RenderPassType.OVERLAY)
+        and not _pass_is_supported(pass_)
     ]
     if unsupported_passes and not effective_allow_partial:
         first = unsupported_passes[0]
         raise RendererExecutionUnsupportedPassError(
-            f"Pass {first.pass_id} ({first.pass_type}) is not executable in Phase 11F "
-            "(real subtitle/overlay rendering requires font/asset resolution, deferred "
-            "to a future Phase 11F.1). Pass allow_partial_execution=True to proceed "
-            "without it."
+            f"Pass {first.pass_id} ({first.pass_type}) is not executable "
+            "(overlay compositing is not implemented; a subtitle pass is only "
+            "executable with an 'ass' or 'drawtext' renderer hint). Pass "
+            "allow_partial_execution=True to proceed without it."
         )
 
     engine_config = video_engine.load_engine_config()
     inspector_config = media_inspector.load_inspector_config()
     music_config = music_mixer.load_music_mixer_config()
+    effective_subtitle_render_config = subtitle_render_config or subtitle_render_engine.load_subtitle_render_config()
 
-    has_music_pass = any(p.pass_type == renderer_plan_engine.RenderPassType.MUSIC for p in plan.passes)
-    intermediate_output_path = (
-        output_path.with_name(f"{output_path.stem}{config.intermediate_filename_suffix}{output_path.suffix}")
-        if has_music_pass
-        else None
+    producing_pass_types = (
+        renderer_plan_engine.RenderPassType.VIDEO,
+        renderer_plan_engine.RenderPassType.SUBTITLE,
+        renderer_plan_engine.RenderPassType.MUSIC,
     )
+    producing_passes = [p for p in plan.passes if p.pass_type in producing_pass_types and _pass_is_supported(p)]
+    last_producing_pass_id = producing_passes[-1].pass_id if producing_passes else None
+
+    def _target_path_for(pass_: renderer_plan_engine.RendererPass) -> Path:
+        if pass_.pass_id == last_producing_pass_id:
+            return output_path
+        if pass_.pass_type == renderer_plan_engine.RenderPassType.VIDEO:
+            return output_path.with_name(f"{output_path.stem}{config.intermediate_filename_suffix}{output_path.suffix}")
+        if pass_.pass_type == renderer_plan_engine.RenderPassType.SUBTITLE:
+            return output_path.with_name(
+                f"{output_path.stem}{config.subtitle_intermediate_filename_suffix}{output_path.suffix}"
+            )
+        return output_path.with_name(f"{output_path.stem}_after_music{output_path.suffix}")
 
     pass_results: list[PassExecutionResult] = []
     warnings: list[str] = []
     errors: list[str] = []
     final_output_path: str | None = None
-    video_pass_output_path: Path | None = None
+    current_video_path: Path | None = None
 
     try:
         probes = _probe_video_assets(plan, inspector_config, runner=runner)
 
         for pass_ in plan.passes:
             if pass_.pass_type == renderer_plan_engine.RenderPassType.VIDEO:
-                target = intermediate_output_path if has_music_pass else output_path
+                target = _target_path_for(pass_)
                 result = _execute_video_pass(
                     pass_, plan, probes, engine_config,
                     output_path=target, dry_run=effective_dry_run, force=force, runner=runner,
                 )
                 pass_results.append(result)
-                if not effective_dry_run:
-                    video_pass_output_path = target
-                if not has_music_pass:
+                current_video_path = target
+                if pass_.pass_id == last_producing_pass_id:
+                    final_output_path = str(target)
+
+            elif pass_.pass_type == renderer_plan_engine.RenderPassType.SUBTITLE and _pass_is_supported(pass_):
+                hint = _find_hint_for_pass(plan, pass_.pass_id)
+                target = _target_path_for(pass_)
+                result = _execute_subtitle_pass(
+                    pass_, plan, hint, overlay_plan, effective_subtitle_render_config,
+                    video_input=current_video_path, output_path=target,
+                    canvas_width=plan.canvas_width, canvas_height=plan.canvas_height,
+                    dry_run=effective_dry_run, force=force, runner=runner,
+                )
+                pass_results.append(result)
+                current_video_path = target
+                if pass_.pass_id == last_producing_pass_id:
                     final_output_path = str(target)
 
             elif pass_.pass_type == renderer_plan_engine.RenderPassType.MUSIC:
-                video_source = video_pass_output_path or intermediate_output_path
+                video_source = current_video_path
+                target = _target_path_for(pass_)
                 result = _execute_music_pass(
-                    pass_, plan, video_pass_output=video_source, final_output_path=output_path,
+                    pass_, plan, video_pass_output=video_source, final_output_path=target,
                     music_config=music_config, dry_run=effective_dry_run, force=force, runner=runner,
                 )
                 pass_results.append(result)
-                final_output_path = str(output_path)
+                if not effective_dry_run:
+                    current_video_path = target
+                if pass_.pass_id == last_producing_pass_id:
+                    final_output_path = str(target)
 
             elif pass_.pass_type in (
                 renderer_plan_engine.RenderPassType.SUBTITLE,
@@ -560,7 +813,7 @@ def execute_renderer_plan(
                 # Reaching here means allow_partial_execution was true --
                 # otherwise the upfront pre-flight check above already
                 # raised before any pass (including video) ran.
-                message = f"Pass {pass_.pass_id} ({pass_.pass_type}) skipped -- not executable in Phase 11F"
+                message = f"Pass {pass_.pass_id} ({pass_.pass_type}) skipped -- not executable"
                 warnings.append(message)
                 pass_results.append(
                     PassExecutionResult(
@@ -637,6 +890,10 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
 
     parser.add_argument("--renderer-plan", dest="renderer_plan", required=True, help="Path to the source renderer_plan.json.")
     parser.add_argument("--timeline", required=True, help="Path to the source timeline.json.")
+    parser.add_argument(
+        "--overlay-plan", dest="overlay_plan", required=True,
+        help="Path to the source overlay_plan.json (used to resolve real subtitle cue text/timing/style).",
+    )
     parser.add_argument("--output", required=True, help="Path to write the final rendered video.")
     parser.add_argument("--config", default=None, help="Path to an alternate config/video/renderer_execution.yaml.")
     parser.add_argument("--execute", action="store_true", help="Actually invoke ffmpeg. Without this, the engine only plans and prints.")
@@ -681,6 +938,7 @@ def main(argv: list[str] | None = None) -> None:
         result = execute_renderer_plan(
             arguments.renderer_plan,
             arguments.timeline,
+            arguments.overlay_plan,
             config,
             output_path=arguments.output,
             dry_run=not arguments.execute,
