@@ -1,0 +1,53 @@
+version: "1.0"
+
+# AIKO OS — Renderer Plan Engine (Phase 11E.1)
+#
+# Adapter-only: combines an already-validated Timeline, an already-
+# validated Overlay Plan, and (optional) descriptive music metadata
+# into one deterministic renderer_plan.json describing HOW a future
+# renderer should execute -- pass order, dependencies, renderer hints,
+# and opaque asset references. Never renders, never calls ffmpeg or
+# ffprobe, never opens/verifies/downloads any asset, never modifies the
+# source timeline.json/overlay_plan.json files.
+
+renderer_plan:
+  schema_version: "1.0"
+  renderer_version: "11E.1"
+  validation_tolerance_seconds: 0.001
+
+canvas:
+  width_fallback: 1080
+  height_fallback: 1920
+  frame_rate_fallback: 30
+
+ordering:
+  # Deterministic pass chain -- a stage is skipped entirely when no
+  # corresponding track was derived (e.g. no music plan supplied).
+  pass_order:
+    - video
+    - subtitle
+    - overlay
+    - music
+    - final_encode
+
+hints:
+  # Recognized RendererHintType values only -- never executed by this
+  # module. A future Renderer Execution Engine (Phase 11F) is the first
+  # phase permitted to turn these into real ffmpeg filter-graph syntax.
+  video_hint: copy
+  subtitle_hint: drawtext
+  overlay_hint: overlay_png
+  music_hint: normalize
+
+output_profile:
+  container: mp4
+  video_codec_hint: h264
+  audio_codec_hint: aac
+
+validation:
+  allow_orphan_assets: false
+  allow_unknown_renderer_hints: false
+
+output:
+  overwrite_requires_force: true
+  atomic_write: true
