@@ -1,0 +1,30 @@
+version: "1.0"
+
+# AIKO OS — Renderer Execution Engine (Phase 11F)
+#
+# Orchestration-only settings. This module owns NO ffmpeg/ffprobe binary
+# configuration -- that stays owned by config/video/engine.yaml
+# (video_engine.py), config/media/inspector.yaml (media_inspector.py),
+# and config/audio/music_mixer.yaml (music_mixer.py), loaded via each
+# engine's own existing config loader. Phase 11F only ever calls real
+# ffmpeg/ffprobe through those three already-tested engines -- it never
+# constructs a raw ffmpeg command itself.
+#
+# --dry-run is the implicit default at the CLI layer (no --execute flag
+# given); this file's dry_run_default only affects direct programmatic
+# callers of execute_renderer_plan() that omit dry_run explicitly.
+
+execution:
+  schema_version: "1.0"
+  dry_run_default: true
+  allow_partial_execution_default: false
+  # Filename suffix inserted before the extension of --output to name
+  # the intermediate video-only file when a music pass follows it
+  # (mirrors reel_builder.py/Phase 11B.1's own intermediate/final
+  # naming convention).
+  intermediate_filename_suffix: "_video_only"
+  log_filename_suffix: "_renderer_execution_log.json"
+
+output:
+  overwrite_requires_force: true
+  atomic_write: true
