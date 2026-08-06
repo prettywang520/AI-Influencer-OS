@@ -5,10 +5,13 @@ version: "1.0"
 # Orchestration-only settings. This module owns NO ffmpeg/ffprobe binary
 # configuration -- that stays owned by config/video/engine.yaml
 # (video_engine.py), config/media/inspector.yaml (media_inspector.py),
-# and config/audio/music_mixer.yaml (music_mixer.py), loaded via each
-# engine's own existing config loader. Phase 11F only ever calls real
-# ffmpeg/ffprobe through those three already-tested engines -- it never
-# constructs a raw ffmpeg command itself.
+# config/audio/music_mixer.yaml (music_mixer.py),
+# config/video/subtitle_render.yaml (subtitle_render_engine.py, Phase
+# 11F.1), and config/video/overlay_render.yaml (overlay_render_engine.py,
+# Phase 11F.6), loaded via each engine's own existing config loader.
+# Renderer Execution only ever calls real ffmpeg/ffprobe through those
+# already-tested engines -- it never constructs a raw ffmpeg command
+# itself.
 #
 # --dry-run is the implicit default at the CLI layer (no --execute flag
 # given); this file's dry_run_default only affects direct programmatic
@@ -28,6 +31,11 @@ execution:
   # Unused (and therefore never written) for plans with no subtitle
   # pass, or where the subtitle pass is the last producing pass.
   subtitle_intermediate_filename_suffix: "_subtitled"
+  # Phase 11F.6 -- filename suffix for the intermediate file written
+  # after an overlay pass when a later pass (music) still follows it.
+  # Unused (and therefore never written) for plans with no overlay
+  # pass, or where the overlay pass is the last producing pass.
+  overlay_intermediate_filename_suffix: "_overlaid"
   log_filename_suffix: "_renderer_execution_log.json"
 
 output:

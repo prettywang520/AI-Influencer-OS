@@ -678,6 +678,36 @@ def build_subtitle_filter_spec(
     raise UnsupportedFilterTypeError(f"Unsupported subtitle render mode: {request.mode!r}")
 
 
+def build_overlay_filter_spec(
+    overlay_plan: overlay_plan_engine.OverlayPlan,
+    renderer_plan: renderer_plan_engine.RendererPlan,
+    overlay_asset_manifest: overlay_asset_resolver.OverlayAssetManifest,
+    config: FilterGraphConfig,
+    *,
+    label_in: str | None = None,
+) -> tuple[list[FilterSpec], list[ExtraInputSpec], list[str]]:
+    """
+    Phase 11F.6 — thin public wrapper around the private
+    _derive_overlay_pass_filters(), mirroring build_subtitle_filter_spec()'s
+    standalone shape: reusable outside the full multi-pass RendererPlan
+    pathway, for a single overlay execution pass (e.g.
+    overlay_render_engine.py). Uses extra_input_start_index=1 -- unlike
+    build_filter_graph()'s own multi-pass pathway (which must account
+    for a preceding multi-asset video pass), a standalone overlay pass
+    always has exactly one real video input: the preceding renderer-
+    execution pass's output, at index 0. Returns
+    (filters, extra_inputs, skipped_overlay_ids) -- drops the internal
+    helper's `label` return value since a standalone caller only needs
+    the wrapped FilterGraph's own `outputs[0]`.
+    """
+    allocator = _LabelAllocator(config.video_label_prefix)
+    filters, _, extra_inputs, skipped_overlay_ids = _derive_overlay_pass_filters(
+        renderer_plan, overlay_plan, label_in or config.initial_input_label, allocator,
+        overlay_asset_manifest=overlay_asset_manifest, extra_input_start_index=1,
+    )
+    return filters, extra_inputs, skipped_overlay_ids
+
+
 # ---------------------------------------------------------------------------
 # Deterministic graph_id
 # ---------------------------------------------------------------------------
@@ -832,6 +862,7 @@ def build_filter_graph_from_filters(
     renderer_plan_id: str = "",
     overlay_plan_id: str | None = None,
     metadata: dict[str, Any] | None = None,
+    extra_inputs: list[ExtraInputSpec] | None = None,
     config: FilterGraphConfig,
 ) -> FilterGraph:
     """
@@ -843,6 +874,11 @@ def build_filter_graph_from_filters(
     have concrete FilterSpecs (outside the RendererPlan/OverlayPlan
     pathway) can still get the full typed FilterGraph structure without
     re-deriving anything build_filter_graph() itself does not need.
+
+    Phase 11F.6: `extra_inputs` (defaults to none) lets a standalone
+    caller (e.g. overlay_render_engine.py, via build_overlay_filter_spec())
+    attach the real ffmpeg -i inputs its filters already reference --
+    without this, filter_graph_serializer.py would never see them.
     """
     graph_pass = FilterGraphPass(
         pass_id=pass_id, pass_type=pass_type, hint_type=hint_type,
@@ -865,6 +901,7 @@ def build_filter_graph_from_filters(
         labels=labels,
         inputs=inputs,
         outputs=outputs,
+        extra_inputs=list(extra_inputs or []),
         dependencies=dependencies,
         metadata=dict(metadata or {}, builder_version=config.builder_version),
     )

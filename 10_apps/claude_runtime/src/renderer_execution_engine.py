@@ -12,7 +12,9 @@ import yaml
 from . import (
     media_inspector,
     music_mixer,
+    overlay_asset_resolver,
     overlay_plan_engine,
+    overlay_render_engine,
     renderer_plan_engine,
     subtitle_render_engine,
     timeline_engine,
@@ -23,17 +25,23 @@ from . import (
 # pipeline permitted to actually invoke ffmpeg/ffprobe -- but it does
 # so exclusively by orchestrating already-built, already-tested engines
 # (video_engine.py, music_mixer.py, media_inspector.py,
-# subtitle_render_engine.py), never by constructing a raw ffmpeg
-# command itself. It reads an already-validated renderer_plan.json (+
-# the timeline.json and overlay_plan.json it references) and executes
-# the "video"/"music" passes for real, plus (Phase 11F.1) "subtitle"
-# passes whose renderer hint is "ass" or "drawtext" -- delegated to
-# subtitle_render_engine.py. "overlay" passes, and "subtitle" passes
-# with any other hint, are detected but never executed here: by
-# default this fails loudly rather than silently producing a video
-# without its planned overlays; --allow-partial-execution is required
-# to proceed anyway, and even then those passes are only ever recorded
-# as "skipped", never faked. --dry-run is the implicit CLI default --
+# subtitle_render_engine.py, overlay_render_engine.py), never by
+# constructing a raw ffmpeg command itself. It reads an
+# already-validated renderer_plan.json (+ the timeline.json and
+# overlay_plan.json it references) and executes the "video"/"music"
+# passes for real, plus (Phase 11F.1) "subtitle" passes whose renderer
+# hint is "ass" or "drawtext" -- delegated to subtitle_render_engine.py
+# -- and (Phase 11F.6) "overlay" passes whose renderer hint is
+# "overlay_png" or "overlay_alpha" -- delegated to
+# overlay_render_engine.py, after this module resolves the plan's real
+# OverlayAssetManifest via overlay_asset_resolver.py (the same
+# "prepare real inputs before any pass runs" role _probe_video_assets()
+# already plays for video). A subtitle/overlay pass with any other
+# hint is detected but never executed here: by default this fails
+# loudly rather than silently producing a video missing its planned
+# subtitles/overlays; --allow-partial-execution is required to proceed
+# anyway, and even then those passes are only ever recorded as
+# "skipped", never faked. --dry-run is the implicit CLI default --
 # ffmpeg is only actually invoked when --execute is explicitly given.
 # This module never publishes, uploads, downloads fonts/assets, or
 # modifies the source renderer_plan.json/timeline.json/overlay_plan.json
@@ -105,6 +113,12 @@ class RendererExecutionSubtitleError(RendererExecutionEngineError):
     drawtext hint)."""
 
 
+class RendererExecutionOverlayError(RendererExecutionEngineError):
+    """Raised when overlay_asset_resolver.py asset resolution or
+    overlay_render_engine.py planning/execution fails for an overlay
+    pass."""
+
+
 class RendererExecutionOutputExistsError(RendererExecutionEngineError):
     """Raised when --output already exists and --force was not given."""
 
@@ -130,6 +144,7 @@ class RendererExecutionConfig:
     allow_partial_execution_default: bool = False
     intermediate_filename_suffix: str = "_video_only"
     subtitle_intermediate_filename_suffix: str = "_subtitled"
+    overlay_intermediate_filename_suffix: str = "_overlaid"
     log_filename_suffix: str = "_renderer_execution_log.json"
     overwrite_requires_force: bool = True
     atomic_write: bool = True
@@ -169,6 +184,9 @@ def load_renderer_execution_config(config_path: str | Path | None = None) -> Ren
         intermediate_filename_suffix=str(execution_section.get("intermediate_filename_suffix", "_video_only")),
         subtitle_intermediate_filename_suffix=str(
             execution_section.get("subtitle_intermediate_filename_suffix", "_subtitled")
+        ),
+        overlay_intermediate_filename_suffix=str(
+            execution_section.get("overlay_intermediate_filename_suffix", "_overlaid")
         ),
         log_filename_suffix=str(execution_section.get("log_filename_suffix", "_renderer_execution_log.json")),
         overwrite_requires_force=bool(output_section.get("overwrite_requires_force", True)),
@@ -567,6 +585,120 @@ def _execute_subtitle_pass(
 
 
 # ---------------------------------------------------------------------------
+# Overlay pass — real execution via overlay_render_engine.py (Phase
+# 11F.6), the first phase permitted to burn overlay compositing into
+# video. Only "overlay_png"/"overlay_alpha" renderer hints are
+# executable here; any other hint is treated as unsupported by the
+# caller (see the pre-flight check and pass-loop dispatch in
+# execute_renderer_plan()).
+# ---------------------------------------------------------------------------
+
+
+def _resolve_overlay_assets(
+    plan: renderer_plan_engine.RendererPlan,
+    overlay_plan: overlay_plan_engine.OverlayPlan,
+    overlay_asset_config: overlay_asset_resolver.OverlayAssetResolverConfig,
+    *,
+    inspector: Any,
+) -> overlay_asset_resolver.OverlayAssetManifest:
+    """
+    "Prepare inputs" for the overlay pass: resolves every overlay asset
+    reference in the plan into a real, validated OverlayAssetManifest --
+    the same orchestration-layer role _probe_video_assets() already
+    plays for video assets. Raises RendererExecutionOverlayError on a
+    hard resolution failure; a soft missing/invalid optional asset is
+    governed entirely by overlay_asset_config's own policy (unchanged),
+    never a second competing policy layer here.
+    """
+    try:
+        references = overlay_asset_resolver.collect_overlay_asset_references(
+            overlay_plan=overlay_plan, renderer_plan=plan, config=overlay_asset_config,
+        )
+        result = overlay_asset_resolver.resolve_overlay_assets(references, overlay_asset_config, inspector=inspector)
+        if result.errors:
+            raise RendererExecutionOverlayError(
+                f"Overlay asset resolution failed: {'; '.join(result.errors)}"
+            )
+        manifest = overlay_asset_resolver.build_overlay_asset_manifest(
+            result, references, overlay_asset_config, source_plan_ids=[overlay_plan.plan_id, plan.renderer_plan_id],
+        )
+    except overlay_asset_resolver.OverlayAssetResolverError as exc:
+        raise RendererExecutionOverlayError(f"Failed to resolve overlay assets: {exc}") from exc
+
+    return manifest
+
+
+def _execute_overlay_pass(
+    pass_: renderer_plan_engine.RendererPass,
+    plan: renderer_plan_engine.RendererPlan,
+    overlay_plan: overlay_plan_engine.OverlayPlan,
+    overlay_asset_manifest: overlay_asset_resolver.OverlayAssetManifest,
+    overlay_render_config: overlay_render_engine.OverlayRenderConfig,
+    *,
+    video_input: Path | None,
+    output_path: Path,
+    canvas_width: int,
+    canvas_height: int,
+    dry_run: bool,
+    force: bool,
+    runner: Any,
+) -> PassExecutionResult:
+    if dry_run and (video_input is None or not video_input.exists()):
+        # The real overlay command depends on reading the preceding
+        # pass's real output, which does not exist yet in dry-run --
+        # mirrors _execute_subtitle_pass()'s own dry-run honesty limit:
+        # only the request parameters can be shown, not the resolved
+        # ffmpeg command.
+        return PassExecutionResult(
+            pass_id=pass_.pass_id, pass_type=pass_.pass_type, status="dry_run",
+            command=None, output_path=str(output_path),
+            warnings=[
+                "overlay pass command depends on a preceding pass's real output; "
+                "not resolved in dry-run"
+            ],
+        )
+
+    if video_input is None:
+        raise RendererExecutionOverlayError(
+            f"Pass {pass_.pass_id} has no video input available (no preceding video/subtitle pass output)"
+        )
+
+    try:
+        request = overlay_render_engine.build_overlay_render_request(
+            video_path=video_input, output_path=output_path, renderer_plan=plan, overlay_plan=overlay_plan,
+            overlay_asset_manifest=overlay_asset_manifest, config=overlay_render_config, force=force,
+            canvas_width=canvas_width, canvas_height=canvas_height,
+        )
+    except overlay_render_engine.OverlayRenderEngineError as exc:
+        raise RendererExecutionOverlayError(f"Failed to build overlay render request: {exc}") from exc
+
+    if dry_run:
+        try:
+            overlay_plan_result = overlay_render_engine.build_overlay_render_plan(request, overlay_render_config)
+        except overlay_render_engine.OverlayRenderEngineError as exc:
+            raise RendererExecutionOverlayError(f"Failed to build overlay render plan: {exc}") from exc
+        return PassExecutionResult(
+            pass_id=pass_.pass_id, pass_type=pass_.pass_type, status="dry_run",
+            command=overlay_plan_result.command, output_path=str(output_path),
+        )
+
+    runner_kwargs = {"runner": runner} if runner is not None else {}
+    try:
+        overlay_result = overlay_render_engine.execute_overlay_render_plan(
+            request, overlay_render_config, **runner_kwargs
+        )
+    except overlay_render_engine.OverlayRenderEngineError as exc:
+        raise RendererExecutionOverlayError(f"Overlay pass execution failed: {exc}") from exc
+
+    return PassExecutionResult(
+        pass_id=pass_.pass_id, pass_type=pass_.pass_type, status="executed",
+        command=overlay_result.command, output_path=overlay_result.output_video,
+        duration_seconds=overlay_result.duration_seconds, return_code=overlay_result.return_code,
+        warnings=list(overlay_result.warnings), error=overlay_result.error,
+    )
+
+
+# ---------------------------------------------------------------------------
 # final_encode pass — verification only, no new ffmpeg call.
 # ---------------------------------------------------------------------------
 
@@ -614,23 +746,36 @@ def execute_renderer_plan(
     force: bool = False,
     runner: Any = None,
     subtitle_render_config: subtitle_render_engine.SubtitleRenderConfig | None = None,
+    overlay_render_config: overlay_render_engine.OverlayRenderConfig | None = None,
+    overlay_asset_config: overlay_asset_resolver.OverlayAssetResolverConfig | None = None,
+    overlay_asset_inspector: Any = None,
 ) -> RendererExecutionResult:
     """
     runner=None (the default) lets each delegated engine
     (media_inspector.py/video_engine.py/music_mixer.py/
-    subtitle_render_engine.py) use its own real default_runner -- each
-    raises its own correctly-typed NotFoundError family on a missing
-    ffmpeg/ffprobe binary, which this module's own except clauses
-    already handle. Tests inject a single shared FakeRunner explicitly
-    instead.
+    subtitle_render_engine.py/overlay_render_engine.py) use its own
+    real default_runner -- each raises its own correctly-typed
+    NotFoundError family on a missing ffmpeg/ffprobe binary, which this
+    module's own except clauses already handle. Tests inject a single
+    shared FakeRunner explicitly instead.
 
-    subtitle_render_config=None (the default) loads the real
-    config/video/subtitle_render.yaml -- the same "None means use the
-    real loader" convention already used for engine_config/
-    inspector_config/music_config internally. Exposed as an explicit
-    parameter (unlike those) because font resolution genuinely depends
-    on filesystem fixtures a caller may need to point at test-specific
-    paths; not exposed via the CLI, which always uses the real config.
+    subtitle_render_config=None / overlay_render_config=None /
+    overlay_asset_config=None (the defaults) load the real
+    config/video/subtitle_render.yaml / overlay_render.yaml /
+    overlay_assets.yaml -- the same "None means use the real loader"
+    convention already used for engine_config/inspector_config/
+    music_config internally. Exposed as explicit parameters (unlike
+    those) because font resolution / overlay-asset resolution
+    genuinely depend on filesystem fixtures a caller may need to point
+    at test-specific paths; none of the three is exposed via the CLI,
+    which always uses the real configs.
+
+    overlay_asset_inspector=None (the default) lets
+    overlay_asset_resolver.resolve_overlay_assets() use its own real
+    default_image_inspector (lazy Pillow import) when the config
+    requires one -- tests inject a FakeInspector instead, mirroring
+    the resolver's own existing convention, so this module's own test
+    suite never needs real Pillow.
     """
     renderer_plan_path = Path(renderer_plan_path)
     timeline_path = Path(timeline_path)
@@ -710,7 +855,11 @@ def execute_renderer_plan(
     # subtitle pass with any other hint, remains unsupported.
     def _pass_is_supported(pass_: renderer_plan_engine.RendererPass) -> bool:
         if pass_.pass_type == renderer_plan_engine.RenderPassType.OVERLAY:
-            return False
+            hint = _find_hint_for_pass(plan, pass_.pass_id)
+            return hint is not None and hint.hint_type in (
+                renderer_plan_engine.RendererHintType.OVERLAY_PNG,
+                renderer_plan_engine.RendererHintType.OVERLAY_ALPHA,
+            )
         if pass_.pass_type == renderer_plan_engine.RenderPassType.SUBTITLE:
             hint = _find_hint_for_pass(plan, pass_.pass_id)
             return hint is not None and hint.hint_type in (
@@ -729,7 +878,8 @@ def execute_renderer_plan(
         first = unsupported_passes[0]
         raise RendererExecutionUnsupportedPassError(
             f"Pass {first.pass_id} ({first.pass_type}) is not executable "
-            "(overlay compositing is not implemented; a subtitle pass is only "
+            "(an overlay pass is only executable with an 'overlay_png' or "
+            "'overlay_alpha' renderer hint; a subtitle pass is only "
             "executable with an 'ass' or 'drawtext' renderer hint). Pass "
             "allow_partial_execution=True to proceed without it."
         )
@@ -738,10 +888,13 @@ def execute_renderer_plan(
     inspector_config = media_inspector.load_inspector_config()
     music_config = music_mixer.load_music_mixer_config()
     effective_subtitle_render_config = subtitle_render_config or subtitle_render_engine.load_subtitle_render_config()
+    effective_overlay_render_config = overlay_render_config or overlay_render_engine.load_overlay_render_config()
+    effective_overlay_asset_config = overlay_asset_config or overlay_asset_resolver.load_overlay_asset_config()
 
     producing_pass_types = (
         renderer_plan_engine.RenderPassType.VIDEO,
         renderer_plan_engine.RenderPassType.SUBTITLE,
+        renderer_plan_engine.RenderPassType.OVERLAY,
         renderer_plan_engine.RenderPassType.MUSIC,
     )
     producing_passes = [p for p in plan.passes if p.pass_type in producing_pass_types and _pass_is_supported(p)]
@@ -756,6 +909,10 @@ def execute_renderer_plan(
             return output_path.with_name(
                 f"{output_path.stem}{config.subtitle_intermediate_filename_suffix}{output_path.suffix}"
             )
+        if pass_.pass_type == renderer_plan_engine.RenderPassType.OVERLAY:
+            return output_path.with_name(
+                f"{output_path.stem}{config.overlay_intermediate_filename_suffix}{output_path.suffix}"
+            )
         return output_path.with_name(f"{output_path.stem}_after_music{output_path.suffix}")
 
     pass_results: list[PassExecutionResult] = []
@@ -766,6 +923,16 @@ def execute_renderer_plan(
 
     try:
         probes = _probe_video_assets(plan, inspector_config, runner=runner)
+
+        overlay_asset_manifest: overlay_asset_resolver.OverlayAssetManifest | None = None
+        has_supported_overlay_pass = any(
+            p.pass_type == renderer_plan_engine.RenderPassType.OVERLAY and _pass_is_supported(p)
+            for p in plan.passes
+        )
+        if has_supported_overlay_pass:
+            overlay_asset_manifest = _resolve_overlay_assets(
+                plan, overlay_plan, effective_overlay_asset_config, inspector=overlay_asset_inspector,
+            )
 
         for pass_ in plan.passes:
             if pass_.pass_type == renderer_plan_engine.RenderPassType.VIDEO:
@@ -784,6 +951,19 @@ def execute_renderer_plan(
                 target = _target_path_for(pass_)
                 result = _execute_subtitle_pass(
                     pass_, plan, hint, overlay_plan, effective_subtitle_render_config,
+                    video_input=current_video_path, output_path=target,
+                    canvas_width=plan.canvas_width, canvas_height=plan.canvas_height,
+                    dry_run=effective_dry_run, force=force, runner=runner,
+                )
+                pass_results.append(result)
+                current_video_path = target
+                if pass_.pass_id == last_producing_pass_id:
+                    final_output_path = str(target)
+
+            elif pass_.pass_type == renderer_plan_engine.RenderPassType.OVERLAY and _pass_is_supported(pass_):
+                target = _target_path_for(pass_)
+                result = _execute_overlay_pass(
+                    pass_, plan, overlay_plan, overlay_asset_manifest, effective_overlay_render_config,
                     video_input=current_video_path, output_path=target,
                     canvas_width=plan.canvas_width, canvas_height=plan.canvas_height,
                     dry_run=effective_dry_run, force=force, runner=runner,

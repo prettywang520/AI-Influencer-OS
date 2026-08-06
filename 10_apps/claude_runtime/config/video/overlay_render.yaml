@@ -1,0 +1,43 @@
+version: "1.0"
+
+# AIKO OS — Overlay Render Engine (Phase 11F.6)
+#
+# The module permitted to burn real overlay compositing (logos,
+# watermarks, stickers, CTAs, location badges) into video. Owns its
+# own ffmpeg process configuration -- independent of
+# config/video/engine.yaml (video_engine.py owns N-input concat
+# execution only; its ConcatPlan model has no room for an arbitrary
+# multi-input filter_complex graph, so this module builds/executes its
+# own focused command rather than bending video_engine.py's model,
+# exactly mirroring config/video/subtitle_render.yaml's own rationale).
+# All filter syntax comes from filter_graph_serializer.py -- this file
+# owns no filter-graph or asset-resolution settings at all; those stay
+# owned by config/video/filter_graph.yaml, filter_graph_serializer.yaml,
+# and overlay_assets.yaml.
+
+overlay_render:
+  schema_version: "1.0"
+
+ffmpeg:
+  binary: ffmpeg
+  timeout_seconds: 300
+  loglevel: error
+  hide_banner: true
+
+video:
+  codec: libx264
+  preset: medium
+  crf: 18
+  pixel_format: yuv420p
+  copy_audio: true
+  audio_codec_when_reencode_required: aac
+  audio_bitrate: 192k
+  faststart: true
+
+output:
+  overwrite_requires_force: true
+  verify_non_zero_bytes: true
+
+diagnostics:
+  write_log: true
+  log_filename_suffix: "_overlay_render_log.json"

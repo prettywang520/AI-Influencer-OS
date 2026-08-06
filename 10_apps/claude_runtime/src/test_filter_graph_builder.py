@@ -699,6 +699,96 @@ class StandaloneSubtitleFilterSpecTests(FilterGraphTempTestCase):
 
 
 # ---------------------------------------------------------------------------
+# Standalone build_overlay_filter_spec() (Phase 11F.6)
+# ---------------------------------------------------------------------------
+
+
+class StandaloneOverlayFilterSpecTests(FilterGraphTempTestCase):
+    def test_single_overlay_produces_one_filter(self):
+        plans = self._build_plans(with_overlay=True)
+        manifest = self._overlay_asset_manifest(plans["overlay_plan"])
+        filters, extra_inputs, skipped = fgb.build_overlay_filter_spec(
+            plans["overlay_plan"], plans["renderer_plan"], manifest, self.config,
+        )
+        self.assertEqual(len(filters), 1)
+        self.assertEqual(filters[0].filter_type, fgb.FilterType.OVERLAY)
+        self.assertEqual(skipped, [])
+
+    def test_extra_input_starts_at_index_one(self):
+        plans = self._build_plans(with_overlay=True)
+        manifest = self._overlay_asset_manifest(plans["overlay_plan"])
+        filters, extra_inputs, _ = fgb.build_overlay_filter_spec(
+            plans["overlay_plan"], plans["renderer_plan"], manifest, self.config,
+        )
+        self.assertEqual(extra_inputs[0].label, "1:v")
+        self.assertEqual(filters[0].label_in[1], "1:v")
+
+    def test_default_label_in_is_initial_input(self):
+        plans = self._build_plans(with_overlay=True)
+        manifest = self._overlay_asset_manifest(plans["overlay_plan"])
+        filters, _, _ = fgb.build_overlay_filter_spec(
+            plans["overlay_plan"], plans["renderer_plan"], manifest, self.config,
+        )
+        self.assertEqual(filters[0].label_in[0], self.config.initial_input_label)
+
+    def test_custom_label_in_respected(self):
+        plans = self._build_plans(with_overlay=True)
+        manifest = self._overlay_asset_manifest(plans["overlay_plan"])
+        filters, _, _ = fgb.build_overlay_filter_spec(
+            plans["overlay_plan"], plans["renderer_plan"], manifest, self.config, label_in="v5",
+        )
+        self.assertEqual(filters[0].label_in[0], "v5")
+
+    def test_no_active_overlays_produces_no_filters(self):
+        plans = self._build_plans()  # no overlay track at all
+        filters, extra_inputs, skipped = fgb.build_overlay_filter_spec(
+            plans["overlay_plan"], plans["renderer_plan"], oar.OverlayAssetManifest(), self.config,
+        )
+        self.assertEqual(filters, [])
+        self.assertEqual(extra_inputs, [])
+        self.assertEqual(skipped, [])
+
+    def test_manifest_required_when_overlays_active(self):
+        plans = self._build_plans(with_overlay=True)
+        with self.assertRaises(fgb.FilterGraphOverlayAssetManifestRequiredError):
+            fgb.build_overlay_filter_spec(plans["overlay_plan"], plans["renderer_plan"], None, self.config)
+
+    def test_unresolved_required_asset_raises(self):
+        plans = self._build_plans(with_overlay=True)
+        manifest = self._overlay_asset_manifest(plans["overlay_plan"], status=oar.AssetResolutionStatus.MISSING)
+        with self.assertRaises(fgb.FilterGraphOverlayAssetUnresolvedError):
+            fgb.build_overlay_filter_spec(plans["overlay_plan"], plans["renderer_plan"], manifest, self.config)
+
+    def test_reused_asset_deduplicates_extra_input(self):
+        shared = self.temp_dir / "shared_logo.png"
+        clips = [
+            self._overlay_clip(clip_id="ov_a", start=0.0, end=3.0),
+            self._overlay_clip(clip_id="ov_b", start=3.0, end=6.0),
+        ]
+        plans = self._build_plans(with_overlay=True, overlay_clips=clips)
+        manifest = self._overlay_asset_manifest(plans["overlay_plan"], shared_path=shared)
+        filters, extra_inputs, _ = fgb.build_overlay_filter_spec(
+            plans["overlay_plan"], plans["renderer_plan"], manifest, self.config,
+        )
+        overlay_filters = [f for f in filters if f.filter_type == fgb.FilterType.OVERLAY]
+        self.assertEqual(len(overlay_filters), 2)
+        self.assertEqual(len(extra_inputs), 1)
+
+    def test_wraps_cleanly_into_filter_graph_via_build_filter_graph_from_filters(self):
+        plans = self._build_plans(with_overlay=True)
+        manifest = self._overlay_asset_manifest(plans["overlay_plan"])
+        filters, extra_inputs, skipped = fgb.build_overlay_filter_spec(
+            plans["overlay_plan"], plans["renderer_plan"], manifest, self.config,
+        )
+        graph = fgb.build_filter_graph_from_filters(
+            filters, pass_id="pass_overlay", pass_type="overlay", hint_type="overlay_png",
+            extra_inputs=extra_inputs, metadata={"skipped_overlays": skipped}, config=self.config,
+        )
+        self.assertTrue(graph.validation.passed)
+        self.assertEqual(graph.extra_inputs, extra_inputs)
+
+
+# ---------------------------------------------------------------------------
 # build_filter_graph() — full integration
 # ---------------------------------------------------------------------------
 
@@ -902,6 +992,33 @@ class BuildFilterGraphFromFiltersTests(unittest.TestCase):
         graph_a = fgb.build_filter_graph_from_filters([spec], pass_id="p", pass_type="subtitle", config=self.config)
         graph_b = fgb.build_filter_graph_from_filters([spec], pass_id="p", pass_type="subtitle", config=self.config)
         self.assertEqual(graph_a.graph_id, graph_b.graph_id)
+
+    def test_extra_inputs_default_empty(self):
+        spec = fgb.FilterSpec(filter_id="f1", filter_type=fgb.FilterType.ASS, label_in=["0:v"], label_out=["v0"], parameters={"ass_path": "/a.ass"})
+        graph = fgb.build_filter_graph_from_filters([spec], pass_id="p", pass_type="subtitle", config=self.config)
+        self.assertEqual(graph.extra_inputs, [])
+
+    def test_extra_inputs_passthrough(self):
+        spec = fgb.FilterSpec(
+            filter_id="f1", filter_type=fgb.FilterType.OVERLAY, label_in=["0:v", "1:v"], label_out=["outv"],
+            parameters={"x": 0, "y": 0},
+        )
+        extra_inputs = [fgb.ExtraInputSpec(label="1:v", resolved_path="/assets/logo.png", asset_id="a1", logical_role="logo")]
+        graph = fgb.build_filter_graph_from_filters(
+            [spec], pass_id="p", pass_type="overlay", extra_inputs=extra_inputs, config=self.config,
+        )
+        self.assertEqual(graph.extra_inputs, extra_inputs)
+
+    def test_extra_inputs_affects_graph_id(self):
+        spec = fgb.FilterSpec(
+            filter_id="f1", filter_type=fgb.FilterType.OVERLAY, label_in=["0:v", "1:v"], label_out=["outv"],
+            parameters={"x": 0, "y": 0},
+        )
+        extra_a = [fgb.ExtraInputSpec(label="1:v", resolved_path="/assets/a.png", asset_id="a1", logical_role="logo")]
+        extra_b = [fgb.ExtraInputSpec(label="1:v", resolved_path="/assets/b.png", asset_id="a1", logical_role="logo")]
+        graph_a = fgb.build_filter_graph_from_filters([spec], pass_id="p", pass_type="overlay", extra_inputs=extra_a, config=self.config)
+        graph_b = fgb.build_filter_graph_from_filters([spec], pass_id="p", pass_type="overlay", extra_inputs=extra_b, config=self.config)
+        self.assertNotEqual(graph_a.graph_id, graph_b.graph_id)
 
 
 # ---------------------------------------------------------------------------

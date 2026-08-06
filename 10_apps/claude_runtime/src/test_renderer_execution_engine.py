@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from . import overlay_asset_resolver as oar
 from . import overlay_plan_engine, renderer_plan_engine, subtitle_render_engine, timeline_engine
 from .video_engine import ProcessResult
 from .renderer_execution_engine import (
@@ -14,6 +15,7 @@ from .renderer_execution_engine import (
     RendererExecutionEngineError,
     RendererExecutionMusicError,
     RendererExecutionOutputExistsError,
+    RendererExecutionOverlayError,
     RendererExecutionPlanLoadError,
     RendererExecutionPlanMismatchError,
     RendererExecutionProbeError,
@@ -154,16 +156,42 @@ class RendererExecutionTempTestCase(unittest.TestCase):
             },
         )
 
-    def _overlay_clip(self, clip_id="ov_1", *, start=0.0, end=3.0) -> timeline_engine.OverlayClip:
+    def _overlay_asset(self, name: str = "logo.png") -> Path:
+        path = self.temp_dir / name
+        if not path.exists():
+            path.write_bytes(b"fake-png-logo-bytes")
+        return path
+
+    def _overlay_clip(self, clip_id="ov_1", *, start=0.0, end=3.0, asset_path=None) -> timeline_engine.OverlayClip:
         # x=540/y=1400 sits inside the default action-safe zone for a
         # 1080x1920 canvas ([120, 960] x [220, 1500]) -- a CTA overlay
         # outside that zone fails Overlay Plan Engine's own validation
-        # before this module is ever reached.
+        # before this module is ever reached. Carries a real (fake-
+        # content) PNG asset_reference by default -- Phase 11F.6 makes
+        # the overlay pass genuinely executable, which requires a
+        # resolvable overlay_asset_resolver reference; a clip with none
+        # correctly fails loudly rather than silently succeeding.
+        asset = asset_path or self._overlay_asset()
         return timeline_engine.OverlayClip(
             clip_id=clip_id, track_id="track_overlay", source_path="", overlay_type="cta",
             start=start, end=end, duration_seconds=end - start, source_out=end - start, content="Shop now",
-            metadata={"position": {"x": 540, "y": 1400}},
+            metadata={"position": {"x": 540, "y": 1400}, "asset": {"asset_reference": str(asset)}},
         )
+
+    def _fake_overlay_asset_inspector(self, *, has_alpha: bool = False):
+        """Injectable overlay_asset_resolver inspector -- no real Pillow
+        touched by this module's own test suite, mirroring the
+        subtitle-pass suite's own font-fixture convention."""
+        def inspector(path: Path) -> oar.OverlayAssetInspection:
+            # 300x150 satisfies every default role's minimum_width/height
+            # in config/video/overlay_assets.yaml (cta's is the largest
+            # at 256x128).
+            return oar.OverlayAssetInspection(
+                width=300, height=150, format="PNG", color_mode="RGBA" if has_alpha else "RGB",
+                has_alpha=has_alpha, alpha_mode=oar.AlphaMode.STRAIGHT if has_alpha else oar.AlphaMode.NONE,
+                animated=False, frame_count=1,
+            )
+        return inspector
 
     def _build_timeline(
         self, *, with_subtitle: bool = False, with_overlay: bool = False, duration: float = 10.0, video_path=None,
@@ -239,6 +267,9 @@ class RendererExecutionTempTestCase(unittest.TestCase):
             if with_subtitle:
                 subtitled_path = output_path.with_name(f"final{self.config.subtitle_intermediate_filename_suffix}.mp4")
                 probes[str(subtitled_path.resolve())] = _video_probe_json(duration=duration)
+            if with_overlay:
+                overlaid_path = output_path.with_name(f"final{self.config.overlay_intermediate_filename_suffix}.mp4")
+                probes[str(overlaid_path.resolve())] = _video_probe_json(duration=duration)
 
         return {
             "timeline": timeline, "timeline_path": timeline_path,
@@ -444,53 +475,58 @@ class VideoMusicExecutionTests(RendererExecutionTempTestCase):
 
 
 class UnsupportedPassTests(RendererExecutionTempTestCase):
-    """Phase 11F.1: overlay compositing remains unimplemented (always
-    unsupported), and a subtitle pass is unsupported when its renderer
-    hint is neither 'ass' nor 'drawtext'. A subtitle pass with the
-    default 'drawtext' hint is now genuinely executable -- see
-    SubtitleDrawTextExecutionTests below."""
+    """An overlay pass is unsupported when its renderer hint is neither
+    'overlay_png' nor 'overlay_alpha' (Phase 11F.6), and a subtitle
+    pass is unsupported when its renderer hint is neither 'ass' nor
+    'drawtext'. The default overlay hint ('overlay_png') is now
+    genuinely executable -- see OverlayPngExecutionTests below; these
+    tests use an explicitly unrecognized hint ('image_sequence') to
+    exercise the still-unsupported path."""
+
+    def _unsupported_overlay_plan_config(self):
+        return dataclasses.replace(self.renderer_plan_config, overlay_hint="image_sequence")
 
     def test_overlay_pass_fails_loud_by_default(self) -> None:
-        chain = self._build_chain(with_overlay=True)
+        chain = self._build_chain(with_overlay=True, renderer_plan_config=self._unsupported_overlay_plan_config())
         runner = FakeRunner(chain["probes"])
         with self.assertRaises(RendererExecutionUnsupportedPassError):
             execute_renderer_plan(chain["renderer_plan_path"], chain["timeline_path"], chain["overlay_plan_path"], self.config, output_path=chain["output_path"], dry_run=True, runner=runner)
 
     def test_overlay_pass_fails_loud_in_execute_mode_too(self) -> None:
-        chain = self._build_chain(with_overlay=True)
+        chain = self._build_chain(with_overlay=True, renderer_plan_config=self._unsupported_overlay_plan_config())
         runner = FakeRunner(chain["probes"])
         with self.assertRaises(RendererExecutionUnsupportedPassError):
             execute_renderer_plan(chain["renderer_plan_path"], chain["timeline_path"], chain["overlay_plan_path"], self.config, output_path=chain["output_path"], dry_run=False, runner=runner)
 
     def test_no_output_written_when_overlay_pass_blocks(self) -> None:
-        chain = self._build_chain(with_overlay=True)
+        chain = self._build_chain(with_overlay=True, renderer_plan_config=self._unsupported_overlay_plan_config())
         runner = FakeRunner(chain["probes"])
         with self.assertRaises(RendererExecutionUnsupportedPassError):
             execute_renderer_plan(chain["renderer_plan_path"], chain["timeline_path"], chain["overlay_plan_path"], self.config, output_path=chain["output_path"], dry_run=False, runner=runner)
         self.assertFalse(chain["output_path"].exists())
 
     def test_allow_partial_execution_skips_overlay(self) -> None:
-        chain = self._build_chain(with_overlay=True)
+        chain = self._build_chain(with_overlay=True, renderer_plan_config=self._unsupported_overlay_plan_config())
         runner = FakeRunner(chain["probes"])
         result = execute_renderer_plan(chain["renderer_plan_path"], chain["timeline_path"], chain["overlay_plan_path"], self.config, output_path=chain["output_path"], dry_run=False, allow_partial_execution=True, runner=runner)
         overlay_pass = next(p for p in result.passes if p.pass_type == "overlay")
         self.assertEqual(overlay_pass.status, "skipped")
 
     def test_allow_partial_execution_still_executes_video(self) -> None:
-        chain = self._build_chain(with_overlay=True)
+        chain = self._build_chain(with_overlay=True, renderer_plan_config=self._unsupported_overlay_plan_config())
         runner = FakeRunner(chain["probes"])
         result = execute_renderer_plan(chain["renderer_plan_path"], chain["timeline_path"], chain["overlay_plan_path"], self.config, output_path=chain["output_path"], dry_run=False, allow_partial_execution=True, runner=runner)
         self.assertTrue(chain["output_path"].is_file())
         self.assertEqual(result.result, "partial")
 
     def test_skipped_pass_warning_recorded(self) -> None:
-        chain = self._build_chain(with_overlay=True)
+        chain = self._build_chain(with_overlay=True, renderer_plan_config=self._unsupported_overlay_plan_config())
         runner = FakeRunner(chain["probes"])
         result = execute_renderer_plan(chain["renderer_plan_path"], chain["timeline_path"], chain["overlay_plan_path"], self.config, output_path=chain["output_path"], dry_run=False, allow_partial_execution=True, runner=runner)
         self.assertTrue(any("skipped" in w for w in result.warnings))
 
     def test_overlay_never_fabricated_in_output(self) -> None:
-        chain = self._build_chain(with_overlay=True)
+        chain = self._build_chain(with_overlay=True, renderer_plan_config=self._unsupported_overlay_plan_config())
         runner = FakeRunner(chain["probes"])
         result = execute_renderer_plan(chain["renderer_plan_path"], chain["timeline_path"], chain["overlay_plan_path"], self.config, output_path=chain["output_path"], dry_run=False, allow_partial_execution=True, runner=runner)
         overlay_pass = next(p for p in result.passes if p.pass_type == "overlay")
@@ -498,7 +534,7 @@ class UnsupportedPassTests(RendererExecutionTempTestCase):
         self.assertIsNone(overlay_pass.output_path)
 
     def test_config_allow_partial_execution_default_used(self) -> None:
-        chain = self._build_chain(with_overlay=True)
+        chain = self._build_chain(with_overlay=True, renderer_plan_config=self._unsupported_overlay_plan_config())
         runner = FakeRunner(chain["probes"])
         config = RendererExecutionConfig(allow_partial_execution_default=True)
         result = execute_renderer_plan(chain["renderer_plan_path"], chain["timeline_path"], chain["overlay_plan_path"], config, output_path=chain["output_path"], dry_run=False, runner=runner)
@@ -720,6 +756,149 @@ class SubtitleAssExecutionTests(RendererExecutionTempTestCase):
 
 
 # ---------------------------------------------------------------------------
+# Overlay pass — overlay_png (Phase 11F.6). The default renderer_plan.yaml
+# hint (overlay_hint: overlay_png) makes this the automatically-wired
+# path, mirroring SubtitleDrawTextExecutionTests's own relationship to
+# subtitle_hint's default.
+# ---------------------------------------------------------------------------
+
+
+class OverlayPngExecutionTests(RendererExecutionTempTestCase):
+    def _overlay_kwargs(self, **overrides):
+        overrides.setdefault("overlay_asset_inspector", self._fake_overlay_asset_inspector())
+        return overrides
+
+    def test_dry_run_overlay_pass_shows_honesty_warning(self) -> None:
+        # The overlay pass depends on the video pass's real (not-yet-
+        # materialized) output, so dry-run cannot resolve a real command
+        # -- mirrors the subtitle/music passes' own established dry-run
+        # limit.
+        chain = self._build_chain(with_overlay=True)
+        runner = FakeRunner(chain["probes"])
+        result = execute_renderer_plan(
+            chain["renderer_plan_path"], chain["timeline_path"], chain["overlay_plan_path"], self.config,
+            output_path=chain["output_path"], dry_run=True, runner=runner, **self._overlay_kwargs(),
+        )
+        overlay_pass = next(p for p in result.passes if p.pass_type == "overlay")
+        self.assertEqual(overlay_pass.status, "dry_run")
+        self.assertIsNone(overlay_pass.command)
+        self.assertTrue(overlay_pass.warnings)
+
+    def test_execute_overlay_pass_writes_final_output(self) -> None:
+        chain = self._build_chain(with_overlay=True)
+        runner = FakeRunner(chain["probes"])
+        result = execute_renderer_plan(
+            chain["renderer_plan_path"], chain["timeline_path"], chain["overlay_plan_path"], self.config,
+            output_path=chain["output_path"], dry_run=False, runner=runner, **self._overlay_kwargs(),
+        )
+        self.assertTrue(chain["output_path"].is_file())
+        self.assertEqual(result.result, "success")
+
+    def test_overlay_pass_status_executed(self) -> None:
+        chain = self._build_chain(with_overlay=True)
+        runner = FakeRunner(chain["probes"])
+        result = execute_renderer_plan(
+            chain["renderer_plan_path"], chain["timeline_path"], chain["overlay_plan_path"], self.config,
+            output_path=chain["output_path"], dry_run=False, runner=runner, **self._overlay_kwargs(),
+        )
+        overlay_pass = next(p for p in result.passes if p.pass_type == "overlay")
+        self.assertEqual(overlay_pass.status, "executed")
+        self.assertEqual(overlay_pass.return_code, 0)
+
+    def test_overlay_command_contains_real_overlay_filter(self) -> None:
+        chain = self._build_chain(with_overlay=True)
+        runner = FakeRunner(chain["probes"])
+        result = execute_renderer_plan(
+            chain["renderer_plan_path"], chain["timeline_path"], chain["overlay_plan_path"], self.config,
+            output_path=chain["output_path"], dry_run=False, runner=runner, **self._overlay_kwargs(),
+        )
+        overlay_pass = next(p for p in result.passes if p.pass_type == "overlay")
+        command_text = " ".join(overlay_pass.command)
+        self.assertIn("overlay=", command_text)
+        self.assertIn("-filter_complex", command_text)
+
+    def test_overlay_command_has_alpha_aware_format_auto(self) -> None:
+        chain = self._build_chain(with_overlay=True)
+        runner = FakeRunner(chain["probes"])
+        result = execute_renderer_plan(
+            chain["renderer_plan_path"], chain["timeline_path"], chain["overlay_plan_path"], self.config,
+            output_path=chain["output_path"], dry_run=False, runner=runner,
+            **self._overlay_kwargs(overlay_asset_inspector=self._fake_overlay_asset_inspector(has_alpha=True)),
+        )
+        overlay_pass = next(p for p in result.passes if p.pass_type == "overlay")
+        self.assertIn("format=auto", " ".join(overlay_pass.command))
+
+    def test_video_pass_writes_intermediate_when_overlay_follows(self) -> None:
+        chain = self._build_chain(with_overlay=True)
+        runner = FakeRunner(chain["probes"])
+        result = execute_renderer_plan(
+            chain["renderer_plan_path"], chain["timeline_path"], chain["overlay_plan_path"], self.config,
+            output_path=chain["output_path"], dry_run=False, runner=runner, **self._overlay_kwargs(),
+        )
+        video_pass = next(p for p in result.passes if p.pass_type == "video")
+        overlay_pass = next(p for p in result.passes if p.pass_type == "overlay")
+        self.assertIn(self.config.intermediate_filename_suffix, video_pass.output_path)
+        self.assertEqual(overlay_pass.output_path, str(chain["output_path"]))
+
+    def test_final_output_path_is_overlay_pass_output_when_no_music(self) -> None:
+        chain = self._build_chain(with_overlay=True)
+        runner = FakeRunner(chain["probes"])
+        result = execute_renderer_plan(
+            chain["renderer_plan_path"], chain["timeline_path"], chain["overlay_plan_path"], self.config,
+            output_path=chain["output_path"], dry_run=False, runner=runner, **self._overlay_kwargs(),
+        )
+        self.assertEqual(result.final_output_path, str(chain["output_path"]))
+
+    def test_ffmpeg_called_for_video_and_overlay(self) -> None:
+        chain = self._build_chain(with_overlay=True)
+        runner = FakeRunner(chain["probes"])
+        execute_renderer_plan(
+            chain["renderer_plan_path"], chain["timeline_path"], chain["overlay_plan_path"], self.config,
+            output_path=chain["output_path"], dry_run=False, runner=runner, **self._overlay_kwargs(),
+        )
+        ffmpeg_calls = [c for c in runner.calls if Path(c[0]).name == "ffmpeg"]
+        self.assertEqual(len(ffmpeg_calls), 2)
+
+    def test_unresolved_overlay_asset_raises_overlay_error(self) -> None:
+        # No overlay_asset_inspector override -- inspection.require_inspector
+        # is true by default and no real Pillow is installed for this
+        # module's own test suite, so resolution itself fails cleanly.
+        chain = self._build_chain(with_overlay=True)
+        runner = FakeRunner(chain["probes"])
+        with self.assertRaises(RendererExecutionOverlayError):
+            execute_renderer_plan(
+                chain["renderer_plan_path"], chain["timeline_path"], chain["overlay_plan_path"], self.config,
+                output_path=chain["output_path"], dry_run=False, runner=runner,
+            )
+
+    def test_multiple_overlays_and_reused_asset_deduplicated(self) -> None:
+        shared = self._overlay_asset("shared_logo.png")
+        clips = [
+            self._overlay_clip(clip_id="ov_a", start=0.0, end=3.0, asset_path=shared),
+            self._overlay_clip(clip_id="ov_b", start=3.0, end=6.0, asset_path=shared),
+        ]
+        chain = self._build_chain(with_overlay=True)
+        # Rebuild the overlay track with the two-clip, shared-asset fixture.
+        timeline = chain["timeline"]
+        overlay_track = next(t for t in timeline.tracks if t.track_type == timeline_engine.TrackType.OVERLAY)
+        overlay_track.clips = clips
+        timeline_engine.save_timeline(timeline, chain["timeline_path"], force=True)
+        overlay_plan = overlay_plan_engine.build_overlay_plan(chain["timeline_path"], self.overlay_config)
+        overlay_plan_engine.save_overlay_plan(overlay_plan, chain["overlay_plan_path"], force=True)
+        renderer_plan = renderer_plan_engine.build_renderer_plan(chain["timeline_path"], chain["overlay_plan_path"], self.renderer_plan_config)
+        renderer_plan_engine.save_renderer_plan(renderer_plan, chain["renderer_plan_path"], force=True)
+
+        runner = FakeRunner(chain["probes"])
+        result = execute_renderer_plan(
+            chain["renderer_plan_path"], chain["timeline_path"], chain["overlay_plan_path"], self.config,
+            output_path=chain["output_path"], dry_run=False, runner=runner, **self._overlay_kwargs(),
+        )
+        overlay_pass = next(p for p in result.passes if p.pass_type == "overlay")
+        self.assertEqual(overlay_pass.command.count("-i"), 2)  # video + 1 deduplicated shared image
+        self.assertEqual(" ".join(overlay_pass.command).count("overlay="), 2)
+
+
+# ---------------------------------------------------------------------------
 # Multi-stage chaining: video -> subtitle -> music -> final_encode
 # ---------------------------------------------------------------------------
 
@@ -775,6 +954,76 @@ class SubtitleChainingTests(RendererExecutionTempTestCase):
         )
         ffmpeg_calls = [c for c in runner.calls if Path(c[0]).name == "ffmpeg"]
         self.assertEqual(len(ffmpeg_calls), 3)
+
+
+# ---------------------------------------------------------------------------
+# Full pipeline chaining: video -> subtitle -> overlay -> music ->
+# final_encode (Phase 11F.6)
+# ---------------------------------------------------------------------------
+
+
+class FullChainTests(RendererExecutionTempTestCase):
+    def _full_chain_kwargs(self):
+        return dict(subtitle_render_config=self._subtitle_render_config(), overlay_asset_inspector=self._fake_overlay_asset_inspector())
+
+    def test_pass_order_is_video_subtitle_overlay_music_final_encode(self) -> None:
+        chain = self._build_chain(with_subtitle=True, with_overlay=True, with_music=True)
+        self.assertEqual(
+            [p.pass_type for p in chain["renderer_plan"].passes],
+            ["video", "subtitle", "overlay", "music", "final_encode"],
+        )
+
+    def test_full_chain_produces_final_output(self) -> None:
+        chain = self._build_chain(with_subtitle=True, with_overlay=True, with_music=True)
+        runner = FakeRunner(chain["probes"])
+        result = execute_renderer_plan(
+            chain["renderer_plan_path"], chain["timeline_path"], chain["overlay_plan_path"], self.config,
+            output_path=chain["output_path"], dry_run=False, runner=runner, **self._full_chain_kwargs(),
+        )
+        self.assertEqual(result.result, "success")
+        self.assertTrue(chain["output_path"].is_file())
+        self.assertEqual(result.final_output_path, str(chain["output_path"]))
+
+    def test_full_chain_result_passes_in_execution_order(self) -> None:
+        chain = self._build_chain(with_subtitle=True, with_overlay=True, with_music=True)
+        runner = FakeRunner(chain["probes"])
+        result = execute_renderer_plan(
+            chain["renderer_plan_path"], chain["timeline_path"], chain["overlay_plan_path"], self.config,
+            output_path=chain["output_path"], dry_run=False, runner=runner, **self._full_chain_kwargs(),
+        )
+        self.assertEqual(
+            [p.pass_type for p in result.passes],
+            ["video", "subtitle", "overlay", "music", "final_encode"],
+        )
+        for p in result.passes[:-1]:
+            self.assertEqual(p.status, "executed")
+        self.assertEqual(result.passes[-1].status, "verified")
+
+    def test_full_chain_uses_distinct_intermediates(self) -> None:
+        chain = self._build_chain(with_subtitle=True, with_overlay=True, with_music=True)
+        runner = FakeRunner(chain["probes"])
+        result = execute_renderer_plan(
+            chain["renderer_plan_path"], chain["timeline_path"], chain["overlay_plan_path"], self.config,
+            output_path=chain["output_path"], dry_run=False, runner=runner, **self._full_chain_kwargs(),
+        )
+        video_pass = next(p for p in result.passes if p.pass_type == "video")
+        subtitle_pass = next(p for p in result.passes if p.pass_type == "subtitle")
+        overlay_pass = next(p for p in result.passes if p.pass_type == "overlay")
+        music_pass = next(p for p in result.passes if p.pass_type == "music")
+        self.assertIn(self.config.intermediate_filename_suffix, video_pass.output_path)
+        self.assertIn(self.config.subtitle_intermediate_filename_suffix, subtitle_pass.output_path)
+        self.assertIn(self.config.overlay_intermediate_filename_suffix, overlay_pass.output_path)
+        self.assertEqual(music_pass.output_path, str(chain["output_path"]))
+
+    def test_full_chain_all_four_ffmpeg_stages_called(self) -> None:
+        chain = self._build_chain(with_subtitle=True, with_overlay=True, with_music=True)
+        runner = FakeRunner(chain["probes"])
+        execute_renderer_plan(
+            chain["renderer_plan_path"], chain["timeline_path"], chain["overlay_plan_path"], self.config,
+            output_path=chain["output_path"], dry_run=False, runner=runner, **self._full_chain_kwargs(),
+        )
+        ffmpeg_calls = [c for c in runner.calls if Path(c[0]).name == "ffmpeg"]
+        self.assertEqual(len(ffmpeg_calls), 4)  # video + subtitle + overlay + music
 
 
 # ---------------------------------------------------------------------------
@@ -1085,6 +1334,10 @@ class ConfigTests(unittest.TestCase):
     def test_repo_config_defines_subtitle_intermediate_suffix(self) -> None:
         config = load_renderer_execution_config()
         self.assertEqual(config.subtitle_intermediate_filename_suffix, "_subtitled")
+
+    def test_repo_config_defines_overlay_intermediate_suffix(self) -> None:
+        config = load_renderer_execution_config()
+        self.assertEqual(config.overlay_intermediate_filename_suffix, "_overlaid")
 
 
 # ---------------------------------------------------------------------------
