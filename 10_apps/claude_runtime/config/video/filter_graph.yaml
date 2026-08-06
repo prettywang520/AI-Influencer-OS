@@ -43,6 +43,13 @@ validation:
   z_order_max: 1000
   require_known_renderer_hints: true
 
+overlays:
+  # Phase 11F.5 — when true, an active overlay whose asset was skipped
+  # (soft-missing, non-required) still fails graph validation unless a
+  # caller explicitly opts out. Never affects required overlays, which
+  # always raise at build time regardless of this flag.
+  require_all_active_overlays_resolved: true
+
 output:
   overwrite_requires_force: true
   atomic_write: true

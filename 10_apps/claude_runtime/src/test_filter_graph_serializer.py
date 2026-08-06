@@ -66,6 +66,30 @@ def _ass_graph(**spec_overrides) -> fgb.FilterGraph:
     )
 
 
+def _overlay_spec(**overrides) -> fgb.FilterSpec:
+    defaults = dict(
+        filter_id="f_overlay",
+        filter_type=fgb.FilterType.OVERLAY,
+        label_in=["0:v", "1:v"],
+        label_out=["outv"],
+        parameters={"x": 10, "y": 20, "asset_id": "a1", "resolved_path": "/assets/logo.png", "has_alpha": True, "logical_role": "logo"},
+    )
+    defaults.update(overrides)
+    return fgb.FilterSpec(**defaults)
+
+
+def _overlay_graph(*, extra_inputs=None, **spec_overrides) -> fgb.FilterGraph:
+    spec = _overlay_spec(**spec_overrides)
+    if extra_inputs is None:
+        extra_inputs = [fgb.ExtraInputSpec(label="1:v", resolved_path="/assets/logo.png", asset_id="a1", logical_role="logo")]
+    graph_pass = fgb.FilterGraphPass(pass_id="pass_overlay", pass_type="overlay", filters=[spec])
+    return fgb.FilterGraph(
+        graph_id="graph_overlay", renderer_plan_id="", overlay_plan_id=None,
+        passes=[graph_pass], filters=[spec], labels=["0:v", "1:v", "outv"], inputs=["0:v", "1:v"],
+        outputs=["outv"], extra_inputs=extra_inputs, dependencies={"pass_overlay": []}, validation=_passed_validation(),
+    )
+
+
 class FilterGraphSerializerTempTestCase(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = Path(tempfile.mkdtemp(prefix="filter_graph_serializer_test_"))
@@ -890,6 +914,95 @@ class GraphSerializationTests(FilterGraphSerializerTempTestCase):
 
 
 # ---------------------------------------------------------------------------
+# Real overlay filter serialization (Phase 11F.5)
+# ---------------------------------------------------------------------------
+
+
+class OverlayFilterSerializationTests(FilterGraphSerializerTempTestCase):
+    def test_overlay_filter_references_real_stream_label(self):
+        graph = _overlay_graph()
+        result = fgs.serialize_filter_graph(graph, self.config)
+        self.assertIn("[1:v]", result.filter_expression)
+
+    def test_format_auto_emitted_when_alpha(self):
+        spec = _overlay_spec(parameters={"x": 10, "y": 20, "has_alpha": True})
+        body = fgs.serialize_overlay_filter(spec, self.config)
+        self.assertIn(":format=auto", body)
+
+    def test_format_auto_omitted_when_no_alpha(self):
+        spec = _overlay_spec(parameters={"x": 10, "y": 20, "has_alpha": False})
+        body = fgs.serialize_overlay_filter(spec, self.config)
+        self.assertNotIn("format=auto", body)
+
+    def test_format_auto_omitted_when_alpha_unknown(self):
+        spec = _overlay_spec(parameters={"x": 10, "y": 20})
+        body = fgs.serialize_overlay_filter(spec, self.config)
+        self.assertNotIn("format=auto", body)
+
+    def test_format_auto_suppressed_by_config(self):
+        spec = _overlay_spec(parameters={"x": 10, "y": 20, "has_alpha": True})
+        config = dataclasses.replace(self.config, overlay_format_auto_when_alpha=False)
+        body = fgs.serialize_overlay_filter(spec, config)
+        self.assertNotIn("format=auto", body)
+
+    def test_custom_overlay_filter_name(self):
+        spec = _overlay_spec(parameters={"x": 10, "y": 20})
+        config = dataclasses.replace(self.config, overlay_filter_name="overlay_cuda")
+        body = fgs.serialize_overlay_filter(spec, config)
+        self.assertTrue(body.startswith("overlay_cuda="))
+
+    def test_extra_inputs_surfaced_in_serialized_graph(self):
+        graph = _overlay_graph()
+        result = fgs.serialize_filter_graph(graph, self.config)
+        self.assertEqual(len(result.extra_inputs), 1)
+        self.assertEqual(result.extra_inputs[0].label, "1:v")
+        self.assertEqual(result.extra_inputs[0].resolved_path, "/assets/logo.png")
+
+    def test_extra_input_label_revalidated(self):
+        bad_extra_inputs = [fgb.ExtraInputSpec(label="not valid!", resolved_path="/assets/logo.png", asset_id="a1", logical_role="logo")]
+        graph = _overlay_graph(extra_inputs=bad_extra_inputs, label_in=["0:v", "not valid!"])
+        with self.assertRaises(fgs.FilterGraphLabelSerializationError):
+            fgs.serialize_filter_graph(graph, self.config)
+
+    def test_unused_extra_input_warns(self):
+        extra_inputs = [
+            fgb.ExtraInputSpec(label="1:v", resolved_path="/assets/logo.png", asset_id="a1", logical_role="logo"),
+            fgb.ExtraInputSpec(label="2:v", resolved_path="/assets/unused.png", asset_id="a2", logical_role="cta"),
+        ]
+        graph = _overlay_graph(extra_inputs=extra_inputs)
+        result = fgs.serialize_filter_graph(graph, self.config)
+        self.assertTrue(any("unused extra input" in w for w in result.warnings))
+
+    def test_no_extra_inputs_no_warning(self):
+        result = fgs.serialize_filter_graph(_drawtext_graph(), self.config)
+        self.assertEqual(result.extra_inputs, [])
+        self.assertFalse(any("unused extra input" in w for w in result.warnings))
+
+    def test_extra_inputs_round_trip(self):
+        graph = _overlay_graph()
+        result = fgs.serialize_filter_graph(graph, self.config)
+        data = fgs.serialized_filter_graph_to_dict(result)
+        restored = fgs.serialized_filter_graph_from_dict(data)
+        self.assertEqual(restored.extra_inputs[0].label, result.extra_inputs[0].label)
+        self.assertEqual(restored.extra_inputs[0].resolved_path, result.extra_inputs[0].resolved_path)
+
+    def test_serialization_id_changes_with_extra_input_path(self):
+        graph_a = _overlay_graph()
+        graph_b = _overlay_graph(
+            extra_inputs=[fgb.ExtraInputSpec(label="1:v", resolved_path="/assets/other.png", asset_id="a1", logical_role="logo")],
+        )
+        result_a = fgs.serialize_filter_graph(graph_a, self.config)
+        result_b = fgs.serialize_filter_graph(graph_b, self.config)
+        self.assertNotEqual(result_a.serialization_id, result_b.serialization_id)
+
+    def test_overlay_forces_filter_complex_and_real_syntax_together(self):
+        graph = _overlay_graph()
+        result = fgs.serialize_filter_graph(graph, self.config)
+        self.assertEqual(result.output_mode, fgs.FilterGraphOutputMode.FILTER_COMPLEX)
+        self.assertIn("overlay=x=10:y=20:format=auto", result.filter_expression)
+
+
+# ---------------------------------------------------------------------------
 # Deterministic serialization_id
 # ---------------------------------------------------------------------------
 
@@ -1071,6 +1184,14 @@ class StructuralSafetyTests(unittest.TestCase):
                 stripped = line.strip()
                 if stripped.startswith("from . import") or stripped.startswith("from ."):
                     self.assertNotIn(forbidden, stripped, f"{forbidden} should not be imported by filter_graph_serializer.py")
+
+    def test_no_pillow_import_or_pixel_access(self):
+        # Phase 11F.5: overlay filter serialization consumes only
+        # already-resolved semantic parameters (has_alpha, resolved_path
+        # as a string) from filter_graph_builder -- it never opens,
+        # decodes, or reads image bytes itself.
+        for forbidden in ("import PIL", "from PIL", "Image.open("):
+            self.assertNotIn(forbidden, MODULE_SOURCE)
 
 
 if __name__ == "__main__":

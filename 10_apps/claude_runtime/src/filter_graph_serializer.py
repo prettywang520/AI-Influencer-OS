@@ -176,6 +176,9 @@ class FilterGraphSerializerConfig:
     ass_allow_fontsdir: bool = True
     ass_allow_force_style: bool = False
 
+    overlay_filter_name: str = "overlay"
+    overlay_format_auto_when_alpha: bool = True
+
     enable_allowed_functions: tuple[str, ...] = ("between",)
     enable_time_variable: str = "t"
     enable_reject_arbitrary_expressions: bool = True
@@ -211,6 +214,7 @@ def load_filter_graph_serializer_config(config_path: str | Path | None = None) -
     labels_section = raw.get("labels") or {}
     drawtext_section = raw.get("drawtext") or {}
     ass_section = raw.get("ass") or {}
+    overlay_section = raw.get("overlay") or {}
     enable_section = raw.get("enable") or {}
     output_section = raw.get("output") or {}
 
@@ -242,6 +246,8 @@ def load_filter_graph_serializer_config(config_path: str | Path | None = None) -
         ass_filter_name=str(ass_section.get("filter_name", "subtitles")),
         ass_allow_fontsdir=bool(ass_section.get("allow_fontsdir", True)),
         ass_allow_force_style=bool(ass_section.get("allow_force_style", False)),
+        overlay_filter_name=str(overlay_section.get("filter_name", "overlay")),
+        overlay_format_auto_when_alpha=bool(overlay_section.get("format_auto_when_alpha", True)),
         enable_allowed_functions=tuple(str(f) for f in (enable_section.get("allowed_functions") or ["between"])),
         enable_time_variable=str(enable_section.get("allowed_time_variable", "t")),
         enable_reject_arbitrary_expressions=bool(enable_section.get("reject_arbitrary_expressions", True)),
@@ -272,6 +278,20 @@ class SerializedLabel:
 
 
 @dataclass(slots=True)
+class SerializedExtraInput:
+    """Mirrors filter_graph_builder.ExtraInputSpec -- a real extra -i
+    input (e.g. an overlay image) a future renderer must feed to
+    ffmpeg for filter_expression's stream labels to resolve. Never an
+    argv-escaped string: this is a plain path, since a future command
+    builder will place it as its own argv element, not inside a filter
+    string."""
+    label: str = ""
+    resolved_path: str = ""
+    asset_id: str = ""
+    logical_role: str = ""
+
+
+@dataclass(slots=True)
 class FilterGraphSerializationWarning:
     code: str = ""
     message: str = ""
@@ -287,6 +307,7 @@ class SerializedFilterGraph:
     filter_argument_name: str = ""
     input_labels: list[str] = field(default_factory=list)
     output_labels: list[str] = field(default_factory=list)
+    extra_inputs: list[SerializedExtraInput] = field(default_factory=list)
     final_output_label: str = ""
     filter_count: int = 0
     filters: list[SerializedFilter] = field(default_factory=list)
@@ -541,15 +562,22 @@ def serialize_ass_filter(spec: filter_graph_builder.FilterSpec, config: FilterGr
 
 def serialize_overlay_filter(spec: filter_graph_builder.FilterSpec, config: FilterGraphSerializerConfig) -> str:
     """
-    Structural serialization only -- produces a syntactically-shaped
-    overlay=... string for a future rendering phase. This phase does
-    not enable real image-compositing execution; nothing consumes this
-    output for real rendering yet.
+    Real overlay filter serialization (Phase 11F.5): label_in[1] must
+    already be a genuine ffmpeg stream label (e.g. "1:v") registered in
+    graph.extra_inputs by the Filter Graph Builder -- this function
+    never resolves, reads, or opens the underlying image itself, it
+    only turns already-resolved semantic parameters (from
+    overlay_asset_resolver.OverlayRenderAsset, via the builder) into
+    ffmpeg filter syntax. When the resolved asset has alpha, emits
+    format=auto -- without it ffmpeg's overlay filter silently drops
+    the overlay input's alpha channel and renders it opaque.
     """
     params = spec.parameters
     x = params.get("x", 0)
     y = params.get("y", 0)
-    body = f"overlay=x={x}:y={y}"
+    body = f"{config.overlay_filter_name}=x={x}:y={y}"
+    if params.get("has_alpha") is True and config.overlay_format_auto_when_alpha:
+        body += ":format=auto"
     if spec.enable_expression:
         serialized_expr = serialize_enable_expression(spec.enable_expression, config)
         body += f":enable={escape_filter_value(serialized_expr, config)}"
@@ -683,6 +711,10 @@ def _compute_serialization_id(result: SerializedFilterGraph, config: FilterGraph
         "output_mode": result.output_mode,
         "filter_expression": result.filter_expression,
         "filter_argument_name": result.filter_argument_name,
+        "extra_inputs": [
+            {"label": e.label, "resolved_path": e.resolved_path, "asset_id": e.asset_id, "logical_role": e.logical_role}
+            for e in result.extra_inputs
+        ],
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
@@ -729,6 +761,8 @@ def serialize_filter_graph(
             _validate_label(label, config)
     for label in graph.outputs:
         _validate_label(label, config)
+    for extra_input in graph.extra_inputs:
+        _validate_label(extra_input.label, config)
 
     # Cross-reference check, independent of validate_filter_graph():
     # every label_in must be either produced by some filter's label_out
@@ -755,6 +789,13 @@ def serialize_filter_graph(
         for label in graph.labels
     ]
 
+    extra_inputs = [
+        SerializedExtraInput(
+            label=e.label, resolved_path=e.resolved_path, asset_id=e.asset_id, logical_role=e.logical_role,
+        )
+        for e in graph.extra_inputs
+    ]
+
     result = SerializedFilterGraph(
         graph_id=graph.graph_id,
         renderer=config.renderer,
@@ -763,6 +804,7 @@ def serialize_filter_graph(
         filter_argument_name=filter_argument_name,
         input_labels=list(graph.inputs),
         output_labels=list(graph.outputs),
+        extra_inputs=extra_inputs,
         final_output_label=final_output_label,
         filter_count=len(graph.filters),
         filters=serialized_filters,
@@ -770,6 +812,15 @@ def serialize_filter_graph(
         metadata={"schema_version": config.schema_version, "labels": label_classifications},
     )
     result.warnings = validate_serialized_filter_graph(result, config)
+
+    consumed_labels = {label for f in serialized_filters for label in f.label_in}
+    for extra_input in extra_inputs:
+        if extra_input.label not in consumed_labels:
+            result.warnings.append(
+                f"extra_input {extra_input.label!r} (asset_id={extra_input.asset_id!r}): produced but never "
+                "consumed by any serialized filter (unused extra input)"
+            )
+
     result.serialization_id = _compute_serialization_id(result, config)
     return result
 
@@ -789,6 +840,7 @@ def serialized_filter_graph_to_dict(result: SerializedFilterGraph) -> dict[str, 
         "filter_argument_name": result.filter_argument_name,
         "input_labels": list(result.input_labels),
         "output_labels": list(result.output_labels),
+        "extra_inputs": [asdict(e) for e in result.extra_inputs],
         "final_output_label": result.final_output_label,
         "filter_count": result.filter_count,
         "filters": [asdict(f) for f in result.filters],
@@ -804,6 +856,11 @@ def serialized_filter_graph_from_dict(data: dict[str, Any]) -> SerializedFilterG
             SerializedFilter(**{key: value for key, value in entry.items() if key in known})
             for entry in data.get("filters", [])
         ]
+        extra_input_known = {f.name for f in dataclasses.fields(SerializedExtraInput)}
+        extra_inputs = [
+            SerializedExtraInput(**{key: value for key, value in entry.items() if key in extra_input_known})
+            for entry in data.get("extra_inputs", [])
+        ]
         return SerializedFilterGraph(
             serialization_id=data.get("serialization_id", ""),
             graph_id=data.get("graph_id", ""),
@@ -813,6 +870,7 @@ def serialized_filter_graph_from_dict(data: dict[str, Any]) -> SerializedFilterG
             filter_argument_name=data.get("filter_argument_name", ""),
             input_labels=list(data.get("input_labels", [])),
             output_labels=list(data.get("output_labels", [])),
+            extra_inputs=extra_inputs,
             final_output_label=data.get("final_output_label", ""),
             filter_count=data.get("filter_count", 0),
             filters=filters,

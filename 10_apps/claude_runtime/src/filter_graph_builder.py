@@ -11,7 +11,7 @@ from typing import Any
 
 import yaml
 
-from . import overlay_plan_engine, renderer_plan_engine, subtitle_render_engine
+from . import overlay_asset_resolver, overlay_plan_engine, renderer_plan_engine, subtitle_render_engine
 
 # Phase 11F.2 — Filter Graph Builder. One reusable, execution-free
 # planning module: reads an already-validated RendererPlan +
@@ -93,6 +93,17 @@ class UnsafeFilterGraphOutputError(FilterGraphBuilderError):
     path as --renderer-plan or --overlay-plan."""
 
 
+class FilterGraphOverlayAssetManifestRequiredError(FilterGraphBuilderError):
+    """Raised when the renderer plan has active overlay clips but no
+    overlay_asset_manifest was supplied -- never falls back to a fake
+    placeholder label for a missing manifest."""
+
+
+class FilterGraphOverlayAssetUnresolvedError(FilterGraphBuilderError):
+    """Raised when an active, required overlay's asset is missing from
+    the manifest or is not status == RESOLVED."""
+
+
 # ---------------------------------------------------------------------------
 # String-constant "enum"
 # ---------------------------------------------------------------------------
@@ -138,6 +149,8 @@ class FilterGraphConfig:
     z_order_max: int = 1000
     require_known_renderer_hints: bool = True
 
+    overlay_require_all_resolved: bool = True
+
     overwrite_requires_force: bool = True
     atomic_write: bool = True
 
@@ -168,6 +181,7 @@ def load_filter_graph_config(config_path: str | Path | None = None) -> FilterGra
     canvas_section = raw.get("canvas") or {}
     labels_section = raw.get("labels") or {}
     validation_section = raw.get("validation") or {}
+    overlays_section = raw.get("overlays") or {}
     output_section = raw.get("output") or {}
     supported_filter_types = raw.get("supported_filter_types") or list(FilterType.ALL)
 
@@ -183,6 +197,7 @@ def load_filter_graph_config(config_path: str | Path | None = None) -> FilterGra
         z_order_min=int(validation_section.get("z_order_min", 0)),
         z_order_max=int(validation_section.get("z_order_max", 1000)),
         require_known_renderer_hints=bool(validation_section.get("require_known_renderer_hints", True)),
+        overlay_require_all_resolved=bool(overlays_section.get("require_all_active_overlays_resolved", True)),
         overwrite_requires_force=bool(output_section.get("overwrite_requires_force", True)),
         atomic_write=bool(output_section.get("atomic_write", True)),
     )
@@ -202,6 +217,18 @@ class FilterSpec:
     parameters: dict[str, Any] = field(default_factory=dict)
     enable_expression: str | None = None
     z_order: int | None = None
+
+
+@dataclass(slots=True)
+class ExtraInputSpec:
+    """A real, ffmpeg-consumable extra -i input (Phase 11F.5) -- e.g. an
+    overlay image whose resolved path was validated by
+    overlay_asset_resolver.py. `label` is a raw numbered stream label
+    like "1:v", never a synthetic placeholder."""
+    label: str = ""
+    resolved_path: str = ""
+    asset_id: str = ""
+    logical_role: str = ""
 
 
 @dataclass(slots=True)
@@ -236,6 +263,7 @@ class FilterGraph:
     labels: list[str] = field(default_factory=list)
     inputs: list[str] = field(default_factory=list)
     outputs: list[str] = field(default_factory=list)
+    extra_inputs: list[ExtraInputSpec] = field(default_factory=list)
     dependencies: dict[str, list[str]] = field(default_factory=dict)
     validation: FilterGraphValidation = field(default_factory=FilterGraphValidation)
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -265,6 +293,33 @@ def _ordered_dedup(items: list[str]) -> list[str]:
             seen.add(item)
             result.append(item)
     return result
+
+
+class _ExtraInputAllocator:
+    """Allocates real, ffmpeg-consumable extra -i stream labels (e.g.
+    "1:v") for overlay image assets, starting from `start_index`.
+    Deduplicates by resolved_path so the same image reused across
+    multiple overlay clips gets exactly one -i input, not one per
+    usage."""
+
+    def __init__(self, start_index: int, video_kind: str = "v") -> None:
+        self._next_index = start_index
+        self._video_kind = video_kind
+        self._by_path: dict[str, ExtraInputSpec] = {}
+        self.ordered: list[ExtraInputSpec] = []
+
+    def allocate(self, resolved_path: str, asset_id: str, logical_role: str) -> str:
+        existing = self._by_path.get(resolved_path)
+        if existing is not None:
+            return existing.label
+        label = f"{self._next_index}:{self._video_kind}"
+        self._next_index += 1
+        spec = ExtraInputSpec(
+            label=label, resolved_path=resolved_path, asset_id=asset_id, logical_role=logical_role,
+        )
+        self._by_path[resolved_path] = spec
+        self.ordered.append(spec)
+        return label
 
 
 # ---------------------------------------------------------------------------
@@ -308,6 +363,21 @@ def _cue_to_params(cue: subtitle_render_engine.DrawTextCue) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Per-pass-type filter derivation — pure planning, no execution.
 # ---------------------------------------------------------------------------
+
+
+def _count_raw_video_inputs(renderer_plan: renderer_plan_engine.RendererPlan, hint_type: str | None) -> int:
+    """
+    Returns the number of raw numbered ffmpeg inputs (0:v, 1:v, ...)
+    the video pass already claims -- mirrors _derive_video_pass_filters's
+    own indexing exactly. Used so overlay image extra-inputs (Phase
+    11F.5) never collide with a normalize/transcode pass's per-asset
+    raw video inputs.
+    """
+    if hint_type in (renderer_plan_engine.RendererHintType.NORMALIZE, renderer_plan_engine.RendererHintType.TRANSCODE):
+        video_track = renderer_plan.video_tracks[0] if renderer_plan.video_tracks else None
+        if video_track is not None and video_track.asset_ids:
+            return len(video_track.asset_ids)
+    return 1
 
 
 def _derive_video_pass_filters(
@@ -449,12 +519,23 @@ def _derive_overlay_pass_filters(
     overlay_plan: overlay_plan_engine.OverlayPlan,
     label_in: str,
     allocator: _LabelAllocator,
-) -> tuple[list[FilterSpec], str]:
+    *,
+    overlay_asset_manifest: overlay_asset_resolver.OverlayAssetManifest | None = None,
+    extra_input_start_index: int | None = None,
+) -> tuple[list[FilterSpec], str, list[ExtraInputSpec], list[str]]:
+    """
+    Phase 11F.5: overlay filters are planned off a real, validated
+    OverlayAssetManifest (Phase 11F.4) -- never off the raw, unresolved
+    style_snapshot.asset_reference. Each resolved overlay asset gets a
+    real numbered ffmpeg stream label (e.g. "1:v") via extra_input
+    allocation, deduplicated by resolved path, instead of the old fake
+    "overlay_asset:{overlay_id}" placeholder.
+    """
     overlay_ids: list[str] = []
     for track in renderer_plan.overlay_tracks:
         overlay_ids.extend(track.overlay_ids)
     if not overlay_ids:
-        return [], label_in
+        return [], label_in, [], []
 
     overlay_by_id = {overlay.overlay_id: overlay for overlay in overlay_plan.overlays}
     active_overlays = [
@@ -462,12 +543,40 @@ def _derive_overlay_pass_filters(
         if overlay_id in overlay_by_id and overlay_by_id[overlay_id].enabled
     ]
     active_overlays.sort(key=lambda overlay: (overlay.z_index, overlay.overlay_id))
+    if not active_overlays:
+        return [], label_in, [], []
+
+    if overlay_asset_manifest is None:
+        raise FilterGraphOverlayAssetManifestRequiredError(
+            "Active overlay clip(s) "
+            f"{[o.overlay_id for o in active_overlays]} require an overlay_asset_manifest "
+            "(Phase 11F.4 OverlayAssetManifest); none was supplied."
+        )
+
+    asset_by_overlay_id: dict[str, overlay_asset_resolver.OverlayRenderAsset] = {}
+    for asset in overlay_asset_manifest.assets:
+        for overlay_id in asset.source_overlay_ids:
+            asset_by_overlay_id[overlay_id] = asset
+
+    input_allocator = _ExtraInputAllocator(extra_input_start_index if extra_input_start_index is not None else 1)
+    skipped_overlay_ids: list[str] = []
 
     filters: list[FilterSpec] = []
     current = label_in
     for overlay in active_overlays:
-        overlay_asset_label = f"overlay_asset:{overlay.overlay_id}"
-        effective_overlay_label = overlay_asset_label
+        asset = asset_by_overlay_id.get(overlay.overlay_id)
+        if asset is None or asset.status != overlay_asset_resolver.AssetResolutionStatus.RESOLVED:
+            required = asset.required if asset is not None else True
+            if not required:
+                skipped_overlay_ids.append(overlay.overlay_id)
+                continue
+            status = asset.status if asset is not None else "not_in_manifest"
+            raise FilterGraphOverlayAssetUnresolvedError(
+                f"Overlay {overlay.overlay_id!r} requires a resolved asset but status is {status!r}"
+            )
+
+        image_label = input_allocator.allocate(asset.resolved_path, asset.asset_id, asset.logical_role)
+        effective_overlay_label = image_label
 
         if overlay.opacity < 1.0:
             alpha_label = allocator.next()
@@ -475,7 +584,7 @@ def _derive_overlay_pass_filters(
                 FilterSpec(
                     filter_id=f"filter_alpha_{overlay.overlay_id}",
                     filter_type=FilterType.ALPHA,
-                    label_in=[overlay_asset_label],
+                    label_in=[image_label],
                     label_out=[alpha_label],
                     parameters={"opacity": overlay.opacity},
                 )
@@ -492,14 +601,23 @@ def _derive_overlay_pass_filters(
                 parameters={
                     "x": overlay.position.x,
                     "y": overlay.position.y,
-                    "asset_reference": overlay.style_snapshot.asset_reference,
+                    "asset_id": asset.asset_id,
+                    "resolved_path": asset.resolved_path,
+                    "has_alpha": asset.has_alpha,
+                    "logical_role": asset.logical_role,
+                    "checksum": asset.checksum,
                 },
                 z_order=overlay.z_index,
             )
         )
         current = out_label
 
-    return filters, current
+    # A soft-skipped overlay's asset is never fabricated or silently
+    # dropped without a trace: skipped_overlay_ids is merged into
+    # graph.metadata by build_filter_graph(), and whether that's
+    # actually acceptable is a policy judgment left entirely to
+    # validate_filter_graph() (config.overlay_require_all_resolved).
+    return filters, current, input_allocator.ordered, skipped_overlay_ids
 
 
 # ---------------------------------------------------------------------------
@@ -595,6 +713,10 @@ def _compute_graph_id(graph: FilterGraph) -> str:
         "labels": list(graph.labels),
         "inputs": list(graph.inputs),
         "outputs": list(graph.outputs),
+        "extra_inputs": [
+            {"label": e.label, "resolved_path": e.resolved_path, "asset_id": e.asset_id, "logical_role": e.logical_role}
+            for e in graph.extra_inputs
+        ],
         "dependencies": {key: list(value) for key, value in graph.dependencies.items()},
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
@@ -612,6 +734,7 @@ def build_filter_graph(
     config: FilterGraphConfig,
     *,
     subtitle_requests: dict[str, subtitle_render_engine.SubtitleRenderRequest] | None = None,
+    overlay_asset_manifest: overlay_asset_resolver.OverlayAssetManifest | None = None,
 ) -> FilterGraph:
     if renderer_plan.overlay_plan_id != overlay_plan.plan_id:
         raise FilterGraphPlanMismatchError(
@@ -624,6 +747,9 @@ def build_filter_graph(
     current_label = config.initial_input_label
     all_filters: list[FilterSpec] = []
     graph_passes: list[FilterGraphPass] = []
+    all_extra_inputs: list[ExtraInputSpec] = []
+    all_skipped_overlay_ids: list[str] = []
+    raw_video_input_count = 1
 
     for pass_ in renderer_plan.passes:
         if pass_.pass_type not in renderer_plan_engine.RenderPassType.ALL:
@@ -636,13 +762,19 @@ def build_filter_graph(
 
         if pass_.pass_type == renderer_plan_engine.RenderPassType.VIDEO:
             filters, current_label = _derive_video_pass_filters(renderer_plan, hint_type, config, allocator)
+            raw_video_input_count = _count_raw_video_inputs(renderer_plan, hint_type)
         elif pass_.pass_type == renderer_plan_engine.RenderPassType.SUBTITLE:
             filters, current_label = _derive_subtitle_pass_filters(
                 renderer_plan, overlay_plan, hint_type, current_label, allocator,
                 pass_id=pass_.pass_id, subtitle_requests=subtitle_requests,
             )
         elif pass_.pass_type == renderer_plan_engine.RenderPassType.OVERLAY:
-            filters, current_label = _derive_overlay_pass_filters(renderer_plan, overlay_plan, current_label, allocator)
+            filters, current_label, extra_inputs, skipped_overlay_ids = _derive_overlay_pass_filters(
+                renderer_plan, overlay_plan, current_label, allocator,
+                overlay_asset_manifest=overlay_asset_manifest, extra_input_start_index=raw_video_input_count,
+            )
+            all_extra_inputs.extend(extra_inputs)
+            all_skipped_overlay_ids.extend(skipped_overlay_ids)
         else:
             filters = []
 
@@ -675,12 +807,14 @@ def build_filter_graph(
         labels=labels,
         inputs=inputs,
         outputs=outputs,
+        extra_inputs=all_extra_inputs,
         dependencies=dependencies,
         metadata={
             "timeline_id": renderer_plan.timeline_id,
             "canvas_width": renderer_plan.canvas_width,
             "canvas_height": renderer_plan.canvas_height,
             "builder_version": config.builder_version,
+            "skipped_overlays": all_skipped_overlay_ids,
         },
     )
     graph.created_at = _now_iso()
@@ -789,6 +923,42 @@ def validate_filter_graph(graph: FilterGraph, config: FilterGraphConfig) -> Filt
                     f"filter {f.filter_id}: label_in={label!r} field: label not produced by any filter "
                     "and not declared in graph.inputs (missing label)"
                 )
+
+    extra_input_labels = [e.label for e in graph.extra_inputs]
+    if len(extra_input_labels) != len(set(extra_input_labels)):
+        errors.append("graph.extra_inputs: duplicate label values field: label expected unique")
+    for extra_input in graph.extra_inputs:
+        parts = extra_input.label.split(":", 1)
+        if len(parts) != 2 or not parts[0].isdigit() or parts[1] not in ("v", "a"):
+            errors.append(
+                f"graph.extra_inputs: label={extra_input.label!r} field: expected a raw numbered stream "
+                "label like '1:v' (invalid extra input label)"
+            )
+
+    extra_input_label_set = set(extra_input_labels)
+    for f in graph.filters:
+        if f.filter_type == FilterType.OVERLAY and len(f.label_in) == 2:
+            image_label = f.label_in[1]
+            if image_label not in extra_input_label_set:
+                errors.append(
+                    f"filter {f.filter_id}: label_in={image_label!r} field: not declared in "
+                    "graph.extra_inputs (overlay image input not registered)"
+                )
+
+    consumed_by_filters = {label for f in graph.filters for label in f.label_in}
+    for extra_input in graph.extra_inputs:
+        if extra_input.label not in consumed_by_filters:
+            warnings.append(
+                f"extra_input {extra_input.label!r} (asset_id={extra_input.asset_id!r}): produced but never "
+                "consumed by any filter (unused extra input)"
+            )
+
+    skipped_overlays = graph.metadata.get("skipped_overlays") or []
+    if skipped_overlays and config.overlay_require_all_resolved:
+        errors.append(
+            f"graph.metadata.skipped_overlays: {skipped_overlays} field: expected empty when "
+            "overlay_require_all_resolved is true (unresolved optional overlay asset)"
+        )
 
     for f in graph.filters:
         if f.filter_type not in config.supported_filter_types:
@@ -921,6 +1091,18 @@ def _validation_from_dict(data: dict[str, Any] | None) -> FilterGraphValidation:
     return FilterGraphValidation(**{key: value for key, value in (data or {}).items() if key in known})
 
 
+def _extra_input_to_dict(extra_input: ExtraInputSpec) -> dict[str, Any]:
+    return asdict(extra_input)
+
+
+def _extra_input_from_dict(data: dict[str, Any]) -> ExtraInputSpec:
+    known = {f.name for f in dataclasses.fields(ExtraInputSpec)}
+    try:
+        return ExtraInputSpec(**{key: value for key, value in data.items() if key in known})
+    except TypeError as exc:
+        raise FilterGraphJSONError(f"Malformed ExtraInputSpec in filter graph JSON: {exc}") from exc
+
+
 def filter_graph_to_dict(graph: FilterGraph) -> dict[str, Any]:
     return {
         "schema_version": graph.schema_version,
@@ -933,6 +1115,7 @@ def filter_graph_to_dict(graph: FilterGraph) -> dict[str, Any]:
         "labels": list(graph.labels),
         "inputs": list(graph.inputs),
         "outputs": list(graph.outputs),
+        "extra_inputs": [_extra_input_to_dict(e) for e in graph.extra_inputs],
         "dependencies": {key: list(value) for key, value in graph.dependencies.items()},
         "validation": _validation_to_dict(graph.validation),
         "metadata": graph.metadata,
@@ -952,6 +1135,7 @@ def filter_graph_from_dict(data: dict[str, Any]) -> FilterGraph:
             labels=list(data.get("labels", [])),
             inputs=list(data.get("inputs", [])),
             outputs=list(data.get("outputs", [])),
+            extra_inputs=[_extra_input_from_dict(e) for e in data.get("extra_inputs", [])],
             dependencies={key: list(value) for key, value in (data.get("dependencies") or {}).items()},
             validation=_validation_from_dict(data.get("validation")),
             metadata=data.get("metadata", {}),

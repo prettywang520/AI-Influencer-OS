@@ -53,6 +53,14 @@ ass:
   allow_fontsdir: true
   allow_force_style: false
 
+overlay:
+  filter_name: overlay
+  # ffmpeg's overlay filter defaults to a pixel format that silently
+  # drops the second input's alpha channel. When the resolved overlay
+  # asset genuinely has alpha (per Phase 11F.4's OverlayAssetManifest),
+  # emit format=auto so it actually blends instead of rendering opaque.
+  format_auto_when_alpha: true
+
 enable:
   allowed_functions:
     - between
