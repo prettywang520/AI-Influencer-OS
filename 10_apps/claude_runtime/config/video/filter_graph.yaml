@@ -1,0 +1,48 @@
+version: "1.0"
+
+# AIKO OS — Filter Graph Builder (Phase 11F.2)
+#
+# One reusable, execution-free planning module: reads an already-
+# validated RendererPlan + OverlayPlan (and, optionally, a pre-built
+# subtitle_render_engine.SubtitleRenderRequest per subtitle pass) and
+# produces a typed FilterGraph describing WHAT filters would run, in
+# WHAT order, wired through WHAT labels. Never builds a raw ffmpeg
+# filter string, never touches ffmpeg/ffprobe, never probes media,
+# never executes anything. FilterSpec.parameters store raw semantic
+# values (text/color/position/timing) -- escaping into literal ffmpeg
+# syntax is deferred to whichever engine eventually consumes a
+# FilterGraph for real execution.
+
+filter_graph:
+  schema_version: "1.0"
+  builder_version: "11F.2"
+
+canvas:
+  width_fallback: 1080
+  height_fallback: 1920
+
+labels:
+  video_label_prefix: "v"
+  final_video_label: "outv"
+  initial_input_label: "0:v"
+
+supported_filter_types:
+  - drawtext
+  - ass
+  - overlay
+  - scale
+  - alpha
+  - format
+  - setpts
+  - fade
+  - trim
+  - concat
+
+validation:
+  z_order_min: 0
+  z_order_max: 1000
+  require_known_renderer_hints: true
+
+output:
+  overwrite_requires_force: true
+  atomic_write: true
