@@ -1,0 +1,98 @@
+version: "1.0"
+
+# AIKO OS — Overlay Asset Resolver (Phase 11F.4)
+#
+# Converts asset references already present in an OverlayPlan/
+# RendererPlan into validated, typed OverlayRenderAsset records: safe
+# local-path resolution, image metadata via an injectable inspector,
+# alpha/dimension policy checks, checksums, and a deterministic
+# manifest. Never renders, never calls ffmpeg, never calls ffprobe,
+# never builds a filter graph, never resizes/converts/downloads an
+# asset, and never picks a replacement asset automatically.
+
+resolver:
+  schema_version: "1.0"
+  project_root: "."
+  allow_absolute_paths: true
+  follow_symlinks: true
+  reject_hidden_files: false
+  fail_on_missing_required_asset: true
+  fail_on_invalid_optional_asset: false
+
+supported_extensions:
+  enabled:
+    - .png
+    - .webp
+    - .jpg
+    - .jpeg
+  disabled:
+    - .gif
+    - .svg
+
+inspection:
+  backend: pillow
+  require_inspector: true
+  allow_unknown_alpha: false
+  reject_animated_assets: true
+
+alpha:
+  roles_requiring_alpha:
+    - logo
+    - watermark
+    - sticker
+  missing_alpha_policy:
+    logo: error
+    watermark: error
+    sticker: error
+    cta: warning
+    location: warning
+    decorative: warning
+    custom: warning
+
+dimensions:
+  default:
+    minimum_width: 32
+    minimum_height: 32
+    maximum_width: 8192
+    maximum_height: 8192
+    maximum_megapixels: 40
+
+  logo:
+    minimum_width: 128
+    minimum_height: 64
+    maximum_aspect_ratio: 8.0
+
+  watermark:
+    minimum_width: 64
+    minimum_height: 32
+    maximum_aspect_ratio: 10.0
+
+  sticker:
+    minimum_width: 64
+    minimum_height: 64
+    preferred_aspect_ratio_min: 0.5
+    preferred_aspect_ratio_max: 2.0
+
+  cta:
+    minimum_width: 256
+    minimum_height: 128
+
+duplicates:
+  same_path_same_role: merge_references
+  same_path_different_role: separate_assets
+  conflicting_requirements: error
+  # Additive: kept false by default so asset_id stays based on
+  # resolved path + checksum + role + type only -- the identity that
+  # makes same_path_same_role merging possible in the first place.
+  # When true, the first source_overlay_id also feeds asset_id.
+  include_source_overlay_in_asset_id: false
+
+checksum:
+  enabled: true
+  algorithm: sha256
+  chunk_size_bytes: 1048576
+
+output:
+  overwrite_requires_force: true
+  atomic_write: true
+  manifest_filename: overlay_asset_manifest.json
