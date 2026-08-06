@@ -1,0 +1,13 @@
+# Phase 12A.0 -- allowed Evidence source types. This is a closed
+# allow-list: any evidence_type outside this list fails validation.
+# Deliberately excludes anything implying automated collection
+# (scraping, API polling, browser automation, login) -- every entry
+# here describes a human-operator-mediated source only.
+
+evidence_types:
+  allowed:
+    - screenshot
+    - manual_note
+    - text_excerpt
+    - exported_data
+    - operator_observation

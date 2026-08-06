@@ -1,0 +1,10 @@
+# Phase 12A.0 -- validation bounds for CreatorDNA / Evidence records.
+
+validation:
+  score_min: 0.0
+  score_max: 1.0
+  # A trait may only carry evidence_ids that exist in the record's
+  # own evidence_index; an empty evidence_index is only valid when
+  # every trait's confidence is "unknown".
+  require_evidence_for_non_unknown_confidence: true
+  max_source_description_chars: 500

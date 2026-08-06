@@ -1,0 +1,32 @@
+# Phase 12A.0 -- Creator Intelligence Framework configuration.
+# Owns confidence thresholds, per-analyzer scoring weights, and
+# excerpt/limit policy. This file does NOT define evidence-type
+# allow-lists (see evidence_types.yaml) or validation bounds (see
+# validation_rules.yaml).
+
+framework:
+  schema_version: "1.0"
+
+confidence:
+  # Minimum number of distinct evidence items backing a trait before
+  # its confidence can rise above LOW.
+  min_evidence_for_medium: 2
+  min_evidence_for_high: 4
+  # Minimum number of *independently sourced* corroborating items
+  # before a trait/claim may be marked VERIFIED.
+  min_corroboration_for_verified: 2
+
+evidence:
+  # Caption/reply/story excerpts are capped to stay copyright-respecting.
+  excerpt_max_chars: 280
+
+analyzer_weights:
+  persona: 1.0
+  visual_realism: 1.0
+  photography: 1.0
+  human_authenticity: 1.0
+  captions: 1.0
+  replies: 1.0
+  storytelling: 1.0
+  reels: 1.0
+  relationships: 1.0

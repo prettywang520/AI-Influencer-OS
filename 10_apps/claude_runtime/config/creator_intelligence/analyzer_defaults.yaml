@@ -1,0 +1,25 @@
+# Phase 12A.0 -- per-analyzer default trait lists. Purely descriptive
+# metadata consumed by summary_builder.py / docs generation; analyzers
+# do not require this file to function (their trait vocabulary is
+# also defined in code) but it keeps the "named trait list per
+# category" documented in one place, editable without a code change.
+
+analyzers:
+  persona:
+    traits: [tone, values, recurring_themes, self_presentation]
+  visual_realism:
+    traits: [lighting_style, composition_style, editing_style, color_grading]
+  photography:
+    traits: [framing, depth_of_field_impression, setting_variety, consistency]
+  human_authenticity:
+    traits: [narrative_consistency, relationship_claim_basis, disclosed_vs_inferred]
+  captions:
+    traits: [tone, length_pattern, hashtag_usage, call_to_action_style]
+  replies:
+    traits: [tone, response_length, emoji_usage, response_cadence]
+  storytelling:
+    traits: [narrative_arc, recurring_motifs, pacing]
+  reels:
+    traits: [hook_style, pacing, editing_cadence, audio_usage]
+  relationships:
+    traits: [named_relationships, relationship_basis_distribution]
