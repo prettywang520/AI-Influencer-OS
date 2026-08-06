@@ -1,0 +1,78 @@
+version: "1.0"
+
+# AIKO OS — End-to-End Render Pipeline (Phase 11F.7)
+#
+# Orchestration-only settings for the workspace/resume/promotion layer
+# on top of renderer_execution_engine.py. This module owns NO
+# ffmpeg/ffprobe binary configuration, NO filter-graph settings, and NO
+# asset-resolution settings -- those stay owned by
+# config/video/engine.yaml, config/video/subtitle_render.yaml,
+# config/video/overlay_render.yaml, config/audio/music_mixer.yaml,
+# config/media/inspector.yaml, config/video/filter_graph*.yaml, and
+# config/video/overlay_assets.yaml, loaded via each engine's own
+# existing config loader through renderer_execution_engine.py's
+# prepare_execution_context()/execute_single_pass() seam. This module
+# never constructs ffmpeg syntax, never resolves overlay assets or
+# fonts itself, and never mutates a source planning file.
+
+pipeline:
+  schema_version: "1.0"
+  supported_pass_order:
+    - video
+    - subtitle
+    - overlay
+    - music
+    - final_encode
+  allow_duplicate_pass_types: false
+  fail_on_unsupported_pass: true
+
+workspace:
+  default_root: output/render_workspaces
+  ownership_marker: ".ai_influencer_render_workspace"
+  state_filename: state.json
+  manifest_filename: execution_manifest.json
+  logs_directory: logs
+  diagnostics_directory: diagnostics
+  intermediates_directory: intermediates
+  final_directory: final
+
+intermediates:
+  video_filename: "01_video.mp4"
+  subtitle_filename: "02_subtitled.mp4"
+  overlay_filename: "03_overlayed.mp4"
+  music_filename: "04_music.mp4"
+  candidate_filename: "05_final_candidate.mp4"
+  keep_on_success: false
+  keep_on_failure: true
+
+resume:
+  enabled: true
+  require_checksum_match: true
+  require_command_fingerprint_match: true
+  invalidate_downstream: true
+
+promotion:
+  atomic_required: true
+  allow_cross_device_copy: false
+  preserve_existing_until_verified: true
+
+verification:
+  enabled: true
+  duration_tolerance_seconds: 0.25
+  require_video_stream: true
+  require_vertical_orientation: true
+  require_audio_when_planned: true
+  validator_profile: instagram_reel
+
+cleanup:
+  verify_workspace_ownership: true
+  preserve_reports: true
+  preserve_logs: true
+  preserve_state: true
+
+reporting:
+  write_detailed_log: true
+  write_execution_report: true
+  detailed_log_filename: renderer_execution_log.json
+  report_filename: end_to_end_render_report.json
+  atomic_write: true

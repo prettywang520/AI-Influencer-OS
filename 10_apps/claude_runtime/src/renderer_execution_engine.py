@@ -730,6 +730,246 @@ def _execute_final_encode_pass(
 
 
 # ---------------------------------------------------------------------------
+# Per-pass execution seam (Phase 11F.7) — the same prologue/dispatch
+# logic execute_renderer_plan() itself uses, factored into reusable
+# pieces so a caller needing per-pass control (e.g.
+# end_to_end_render_pipeline.py's resume/retry logic) can drive passes
+# one at a time without duplicating any ffmpeg/adapter logic. Never
+# used to change execute_renderer_plan()'s own external behavior --
+# its own full test suite is the proof of that.
+# ---------------------------------------------------------------------------
+
+
+def _pass_is_supported(pass_: renderer_plan_engine.RendererPass, plan: renderer_plan_engine.RendererPlan) -> bool:
+    """Whether `pass_` can actually be executed by execute_single_pass():
+    an overlay pass only when its hint is overlay_png/overlay_alpha, a
+    subtitle pass only when its hint is ass/drawtext, every other pass
+    type unconditionally. Pure policy check, never executes anything."""
+    if pass_.pass_type == renderer_plan_engine.RenderPassType.OVERLAY:
+        hint = _find_hint_for_pass(plan, pass_.pass_id)
+        return hint is not None and hint.hint_type in (
+            renderer_plan_engine.RendererHintType.OVERLAY_PNG,
+            renderer_plan_engine.RendererHintType.OVERLAY_ALPHA,
+        )
+    if pass_.pass_type == renderer_plan_engine.RenderPassType.SUBTITLE:
+        hint = _find_hint_for_pass(plan, pass_.pass_id)
+        return hint is not None and hint.hint_type in (
+            renderer_plan_engine.RendererHintType.ASS,
+            renderer_plan_engine.RendererHintType.DRAWTEXT,
+        )
+    return True
+
+
+def is_pass_supported(pass_: renderer_plan_engine.RendererPass, plan: renderer_plan_engine.RendererPlan) -> bool:
+    """Public one-line wrapper around _pass_is_supported() -- lets a
+    per-pass caller (e.g. end_to_end_render_pipeline.py) run the exact
+    same up-front "will this pass actually execute" pre-flight check
+    execute_renderer_plan() itself runs, before touching any media."""
+    return _pass_is_supported(pass_, plan)
+
+
+def _load_and_cross_check_plans(
+    renderer_plan_path: Path, timeline_path: Path, overlay_plan_path: Path,
+) -> tuple[renderer_plan_engine.RendererPlan, timeline_engine.Timeline, overlay_plan_engine.OverlayPlan]:
+    """Loads+validates renderer_plan.json/timeline.json/overlay_plan.json
+    and cross-checks their identities match -- the exact prologue both
+    execute_renderer_plan() and prepare_execution_context() need, in
+    the same order, raising the same errors."""
+    try:
+        plan = renderer_plan_engine.load_renderer_plan(renderer_plan_path)
+    except renderer_plan_engine.RendererPlanEngineError as exc:
+        raise RendererExecutionPlanLoadError(f"Failed to load renderer plan {renderer_plan_path}: {exc}") from exc
+
+    renderer_plan_config = renderer_plan_engine.load_renderer_plan_config()
+    plan_result = renderer_plan_engine.validate_renderer_plan(plan, renderer_plan_config)
+    if not plan_result.passed:
+        raise RendererExecutionPlanLoadError(
+            f"Renderer plan {renderer_plan_path} failed validation: {'; '.join(plan_result.errors)}"
+        )
+
+    try:
+        timeline = timeline_engine.load_timeline(timeline_path)
+    except timeline_engine.TimelineEngineError as exc:
+        raise RendererExecutionTimelineLoadError(f"Failed to load timeline {timeline_path}: {exc}") from exc
+
+    timeline_result = timeline_engine.validate_timeline(timeline)
+    if not timeline_result.passed:
+        raise RendererExecutionTimelineLoadError(
+            f"Timeline {timeline_path} failed validation: {'; '.join(timeline_result.errors)}"
+        )
+
+    if plan.timeline_id != timeline.timeline_id:
+        raise RendererExecutionPlanMismatchError(
+            f"Renderer plan timeline_id {plan.timeline_id!r} does not match timeline_id "
+            f"{timeline.timeline_id!r}"
+        )
+
+    try:
+        overlay_plan = overlay_plan_engine.load_overlay_plan(overlay_plan_path)
+    except overlay_plan_engine.OverlayPlanEngineError as exc:
+        raise RendererExecutionPlanLoadError(f"Failed to load overlay plan {overlay_plan_path}: {exc}") from exc
+
+    overlay_plan_config = overlay_plan_engine.load_overlay_plan_config()
+    overlay_plan_result = overlay_plan_engine.validate_overlay_plan(overlay_plan, overlay_plan_config, timeline=timeline)
+    if not overlay_plan_result.passed:
+        raise RendererExecutionPlanLoadError(
+            f"Overlay plan {overlay_plan_path} failed validation: {'; '.join(overlay_plan_result.errors)}"
+        )
+
+    if plan.overlay_plan_id != overlay_plan.plan_id:
+        raise RendererExecutionPlanMismatchError(
+            f"Renderer plan overlay_plan_id {plan.overlay_plan_id!r} does not match overlay "
+            f"plan_id {overlay_plan.plan_id!r}"
+        )
+
+    return plan, timeline, overlay_plan
+
+
+@dataclass(slots=True)
+class RendererExecutionContext:
+    """Bundles everything a per-pass caller needs: the loaded+validated
+    plan/timeline/overlay_plan (identity cross-checked), real video
+    probes, the resolved OverlayAssetManifest (None when the plan has
+    no supported overlay pass), and every engine config
+    execute_single_pass() needs to dispatch a pass. Phase 11F.7's
+    end_to_end_render_pipeline.py is the first caller that needs this
+    outside execute_renderer_plan()'s own one-shot use."""
+
+    plan: renderer_plan_engine.RendererPlan
+    timeline: timeline_engine.Timeline
+    overlay_plan: overlay_plan_engine.OverlayPlan
+    probes: dict[str, media_inspector.MediaInfo]
+    overlay_asset_manifest: overlay_asset_resolver.OverlayAssetManifest | None
+    engine_config: video_engine.VideoEngineConfig
+    inspector_config: media_inspector.InspectorConfig
+    music_config: "music_mixer.MusicMixerConfig"
+    subtitle_render_config: subtitle_render_engine.SubtitleRenderConfig
+    overlay_render_config: overlay_render_engine.OverlayRenderConfig
+
+
+def prepare_execution_context(
+    renderer_plan_path: str | Path,
+    timeline_path: str | Path,
+    overlay_plan_path: str | Path,
+    *,
+    runner: Any = None,
+    subtitle_render_config: subtitle_render_engine.SubtitleRenderConfig | None = None,
+    overlay_render_config: overlay_render_engine.OverlayRenderConfig | None = None,
+    overlay_asset_config: overlay_asset_resolver.OverlayAssetResolverConfig | None = None,
+    overlay_asset_inspector: Any = None,
+) -> RendererExecutionContext:
+    """
+    The load/validate/cross-check/probe/resolve-overlay-assets prologue
+    execute_renderer_plan() itself runs, factored out so a per-pass
+    caller can run it exactly once and then drive execute_single_pass()
+    directly per pass. Raises the exact same errors
+    execute_renderer_plan() already raises for each of these steps.
+    """
+    renderer_plan_path = Path(renderer_plan_path)
+    timeline_path = Path(timeline_path)
+    overlay_plan_path = Path(overlay_plan_path)
+
+    plan, timeline, overlay_plan = _load_and_cross_check_plans(renderer_plan_path, timeline_path, overlay_plan_path)
+
+    engine_config = video_engine.load_engine_config()
+    inspector_config = media_inspector.load_inspector_config()
+    music_config = music_mixer.load_music_mixer_config()
+    effective_subtitle_render_config = subtitle_render_config or subtitle_render_engine.load_subtitle_render_config()
+    effective_overlay_render_config = overlay_render_config or overlay_render_engine.load_overlay_render_config()
+    effective_overlay_asset_config = overlay_asset_config or overlay_asset_resolver.load_overlay_asset_config()
+
+    probes = _probe_video_assets(plan, inspector_config, runner=runner)
+
+    overlay_asset_manifest: overlay_asset_resolver.OverlayAssetManifest | None = None
+    has_supported_overlay_pass = any(
+        p.pass_type == renderer_plan_engine.RenderPassType.OVERLAY and _pass_is_supported(p, plan)
+        for p in plan.passes
+    )
+    if has_supported_overlay_pass:
+        overlay_asset_manifest = _resolve_overlay_assets(
+            plan, overlay_plan, effective_overlay_asset_config, inspector=overlay_asset_inspector,
+        )
+
+    return RendererExecutionContext(
+        plan=plan, timeline=timeline, overlay_plan=overlay_plan, probes=probes,
+        overlay_asset_manifest=overlay_asset_manifest, engine_config=engine_config,
+        inspector_config=inspector_config, music_config=music_config,
+        subtitle_render_config=effective_subtitle_render_config,
+        overlay_render_config=effective_overlay_render_config,
+    )
+
+
+def execute_single_pass(
+    pass_: renderer_plan_engine.RendererPass,
+    context: RendererExecutionContext,
+    *,
+    video_input: Path | None,
+    output_path: Path,
+    dry_run: bool,
+    force: bool,
+    runner: Any,
+) -> PassExecutionResult:
+    """
+    Executes exactly one pass, dispatching to the same private
+    _execute_video_pass()/_execute_subtitle_pass()/_execute_overlay_pass()/
+    _execute_music_pass()/_execute_final_encode_pass() helpers
+    execute_renderer_plan()'s own loop calls -- zero duplicated ffmpeg/
+    adapter logic. Raises RendererExecutionUnsupportedPassError for a
+    subtitle/overlay pass whose hint isn't executable (a per-pass
+    caller naturally discovers this the moment it reaches that pass,
+    e.g. via a dry-run fingerprint check).
+    """
+    plan = context.plan
+
+    if pass_.pass_type == renderer_plan_engine.RenderPassType.VIDEO:
+        return _execute_video_pass(
+            pass_, plan, context.probes, context.engine_config,
+            output_path=output_path, dry_run=dry_run, force=force, runner=runner,
+        )
+
+    if pass_.pass_type == renderer_plan_engine.RenderPassType.SUBTITLE:
+        if not _pass_is_supported(pass_, plan):
+            raise RendererExecutionUnsupportedPassError(
+                f"Pass {pass_.pass_id} (subtitle) is not executable (renderer hint is not 'ass'/'drawtext')."
+            )
+        hint = _find_hint_for_pass(plan, pass_.pass_id)
+        return _execute_subtitle_pass(
+            pass_, plan, hint, context.overlay_plan, context.subtitle_render_config,
+            video_input=video_input, output_path=output_path,
+            canvas_width=plan.canvas_width, canvas_height=plan.canvas_height,
+            dry_run=dry_run, force=force, runner=runner,
+        )
+
+    if pass_.pass_type == renderer_plan_engine.RenderPassType.OVERLAY:
+        if not _pass_is_supported(pass_, plan):
+            raise RendererExecutionUnsupportedPassError(
+                f"Pass {pass_.pass_id} (overlay) is not executable "
+                "(renderer hint is not 'overlay_png'/'overlay_alpha')."
+            )
+        return _execute_overlay_pass(
+            pass_, plan, context.overlay_plan, context.overlay_asset_manifest, context.overlay_render_config,
+            video_input=video_input, output_path=output_path,
+            canvas_width=plan.canvas_width, canvas_height=plan.canvas_height,
+            dry_run=dry_run, force=force, runner=runner,
+        )
+
+    if pass_.pass_type == renderer_plan_engine.RenderPassType.MUSIC:
+        return _execute_music_pass(
+            pass_, plan, video_pass_output=video_input, final_output_path=output_path,
+            music_config=context.music_config, dry_run=dry_run, force=force, runner=runner,
+        )
+
+    if pass_.pass_type == renderer_plan_engine.RenderPassType.FINAL_ENCODE:
+        return _execute_final_encode_pass(
+            pass_, final_output_path=output_path, engine_config=context.engine_config, dry_run=dry_run,
+        )
+
+    raise RendererExecutionUnsupportedPassError(
+        f"Pass {pass_.pass_id} has an unrecognized pass_type {pass_.pass_type!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
 
@@ -796,52 +1036,7 @@ def execute_renderer_plan(
 
     started_at = _now_iso()
 
-    try:
-        plan = renderer_plan_engine.load_renderer_plan(renderer_plan_path)
-    except renderer_plan_engine.RendererPlanEngineError as exc:
-        raise RendererExecutionPlanLoadError(f"Failed to load renderer plan {renderer_plan_path}: {exc}") from exc
-
-    renderer_plan_config = renderer_plan_engine.load_renderer_plan_config()
-    plan_result = renderer_plan_engine.validate_renderer_plan(plan, renderer_plan_config)
-    if not plan_result.passed:
-        raise RendererExecutionPlanLoadError(
-            f"Renderer plan {renderer_plan_path} failed validation: {'; '.join(plan_result.errors)}"
-        )
-
-    try:
-        timeline = timeline_engine.load_timeline(timeline_path)
-    except timeline_engine.TimelineEngineError as exc:
-        raise RendererExecutionTimelineLoadError(f"Failed to load timeline {timeline_path}: {exc}") from exc
-
-    timeline_result = timeline_engine.validate_timeline(timeline)
-    if not timeline_result.passed:
-        raise RendererExecutionTimelineLoadError(
-            f"Timeline {timeline_path} failed validation: {'; '.join(timeline_result.errors)}"
-        )
-
-    if plan.timeline_id != timeline.timeline_id:
-        raise RendererExecutionPlanMismatchError(
-            f"Renderer plan timeline_id {plan.timeline_id!r} does not match timeline_id "
-            f"{timeline.timeline_id!r}"
-        )
-
-    try:
-        overlay_plan = overlay_plan_engine.load_overlay_plan(overlay_plan_path)
-    except overlay_plan_engine.OverlayPlanEngineError as exc:
-        raise RendererExecutionPlanLoadError(f"Failed to load overlay plan {overlay_plan_path}: {exc}") from exc
-
-    overlay_plan_config = overlay_plan_engine.load_overlay_plan_config()
-    overlay_plan_result = overlay_plan_engine.validate_overlay_plan(overlay_plan, overlay_plan_config, timeline=timeline)
-    if not overlay_plan_result.passed:
-        raise RendererExecutionPlanLoadError(
-            f"Overlay plan {overlay_plan_path} failed validation: {'; '.join(overlay_plan_result.errors)}"
-        )
-
-    if plan.overlay_plan_id != overlay_plan.plan_id:
-        raise RendererExecutionPlanMismatchError(
-            f"Renderer plan overlay_plan_id {plan.overlay_plan_id!r} does not match overlay "
-            f"plan_id {overlay_plan.plan_id!r}"
-        )
+    plan, timeline, overlay_plan = _load_and_cross_check_plans(renderer_plan_path, timeline_path, overlay_plan_path)
 
     if not effective_dry_run and output_path.exists() and not force:
         raise RendererExecutionOutputExistsError(f"{output_path} already exists; pass force=True to overwrite.")
@@ -853,26 +1048,11 @@ def execute_renderer_plan(
     # happens. A subtitle pass is supported only when its renderer hint
     # is "ass"/"drawtext" (Phase 11F.1); an "overlay" pass, or a
     # subtitle pass with any other hint, remains unsupported.
-    def _pass_is_supported(pass_: renderer_plan_engine.RendererPass) -> bool:
-        if pass_.pass_type == renderer_plan_engine.RenderPassType.OVERLAY:
-            hint = _find_hint_for_pass(plan, pass_.pass_id)
-            return hint is not None and hint.hint_type in (
-                renderer_plan_engine.RendererHintType.OVERLAY_PNG,
-                renderer_plan_engine.RendererHintType.OVERLAY_ALPHA,
-            )
-        if pass_.pass_type == renderer_plan_engine.RenderPassType.SUBTITLE:
-            hint = _find_hint_for_pass(plan, pass_.pass_id)
-            return hint is not None and hint.hint_type in (
-                renderer_plan_engine.RendererHintType.ASS,
-                renderer_plan_engine.RendererHintType.DRAWTEXT,
-            )
-        return True
-
     unsupported_passes = [
         pass_
         for pass_ in plan.passes
         if pass_.pass_type in (renderer_plan_engine.RenderPassType.SUBTITLE, renderer_plan_engine.RenderPassType.OVERLAY)
-        and not _pass_is_supported(pass_)
+        and not _pass_is_supported(pass_, plan)
     ]
     if unsupported_passes and not effective_allow_partial:
         first = unsupported_passes[0]
@@ -884,20 +1064,13 @@ def execute_renderer_plan(
             "allow_partial_execution=True to proceed without it."
         )
 
-    engine_config = video_engine.load_engine_config()
-    inspector_config = media_inspector.load_inspector_config()
-    music_config = music_mixer.load_music_mixer_config()
-    effective_subtitle_render_config = subtitle_render_config or subtitle_render_engine.load_subtitle_render_config()
-    effective_overlay_render_config = overlay_render_config or overlay_render_engine.load_overlay_render_config()
-    effective_overlay_asset_config = overlay_asset_config or overlay_asset_resolver.load_overlay_asset_config()
-
     producing_pass_types = (
         renderer_plan_engine.RenderPassType.VIDEO,
         renderer_plan_engine.RenderPassType.SUBTITLE,
         renderer_plan_engine.RenderPassType.OVERLAY,
         renderer_plan_engine.RenderPassType.MUSIC,
     )
-    producing_passes = [p for p in plan.passes if p.pass_type in producing_pass_types and _pass_is_supported(p)]
+    producing_passes = [p for p in plan.passes if p.pass_type in producing_pass_types and _pass_is_supported(p, plan)]
     last_producing_pass_id = producing_passes[-1].pass_id if producing_passes else None
 
     def _target_path_for(pass_: renderer_plan_engine.RendererPass) -> Path:
@@ -922,11 +1095,18 @@ def execute_renderer_plan(
     current_video_path: Path | None = None
 
     try:
+        engine_config = video_engine.load_engine_config()
+        inspector_config = media_inspector.load_inspector_config()
+        music_config = music_mixer.load_music_mixer_config()
+        effective_subtitle_render_config = subtitle_render_config or subtitle_render_engine.load_subtitle_render_config()
+        effective_overlay_render_config = overlay_render_config or overlay_render_engine.load_overlay_render_config()
+        effective_overlay_asset_config = overlay_asset_config or overlay_asset_resolver.load_overlay_asset_config()
+
         probes = _probe_video_assets(plan, inspector_config, runner=runner)
 
         overlay_asset_manifest: overlay_asset_resolver.OverlayAssetManifest | None = None
         has_supported_overlay_pass = any(
-            p.pass_type == renderer_plan_engine.RenderPassType.OVERLAY and _pass_is_supported(p)
+            p.pass_type == renderer_plan_engine.RenderPassType.OVERLAY and _pass_is_supported(p, plan)
             for p in plan.passes
         )
         if has_supported_overlay_pass:
@@ -934,25 +1114,19 @@ def execute_renderer_plan(
                 plan, overlay_plan, effective_overlay_asset_config, inspector=overlay_asset_inspector,
             )
 
+        context = RendererExecutionContext(
+            plan=plan, timeline=timeline, overlay_plan=overlay_plan, probes=probes,
+            overlay_asset_manifest=overlay_asset_manifest, engine_config=engine_config,
+            inspector_config=inspector_config, music_config=music_config,
+            subtitle_render_config=effective_subtitle_render_config,
+            overlay_render_config=effective_overlay_render_config,
+        )
+
         for pass_ in plan.passes:
             if pass_.pass_type == renderer_plan_engine.RenderPassType.VIDEO:
                 target = _target_path_for(pass_)
-                result = _execute_video_pass(
-                    pass_, plan, probes, engine_config,
-                    output_path=target, dry_run=effective_dry_run, force=force, runner=runner,
-                )
-                pass_results.append(result)
-                current_video_path = target
-                if pass_.pass_id == last_producing_pass_id:
-                    final_output_path = str(target)
-
-            elif pass_.pass_type == renderer_plan_engine.RenderPassType.SUBTITLE and _pass_is_supported(pass_):
-                hint = _find_hint_for_pass(plan, pass_.pass_id)
-                target = _target_path_for(pass_)
-                result = _execute_subtitle_pass(
-                    pass_, plan, hint, overlay_plan, effective_subtitle_render_config,
-                    video_input=current_video_path, output_path=target,
-                    canvas_width=plan.canvas_width, canvas_height=plan.canvas_height,
+                result = execute_single_pass(
+                    pass_, context, video_input=None, output_path=target,
                     dry_run=effective_dry_run, force=force, runner=runner,
                 )
                 pass_results.append(result)
@@ -960,12 +1134,21 @@ def execute_renderer_plan(
                 if pass_.pass_id == last_producing_pass_id:
                     final_output_path = str(target)
 
-            elif pass_.pass_type == renderer_plan_engine.RenderPassType.OVERLAY and _pass_is_supported(pass_):
+            elif pass_.pass_type == renderer_plan_engine.RenderPassType.SUBTITLE and _pass_is_supported(pass_, plan):
                 target = _target_path_for(pass_)
-                result = _execute_overlay_pass(
-                    pass_, plan, overlay_plan, overlay_asset_manifest, effective_overlay_render_config,
-                    video_input=current_video_path, output_path=target,
-                    canvas_width=plan.canvas_width, canvas_height=plan.canvas_height,
+                result = execute_single_pass(
+                    pass_, context, video_input=current_video_path, output_path=target,
+                    dry_run=effective_dry_run, force=force, runner=runner,
+                )
+                pass_results.append(result)
+                current_video_path = target
+                if pass_.pass_id == last_producing_pass_id:
+                    final_output_path = str(target)
+
+            elif pass_.pass_type == renderer_plan_engine.RenderPassType.OVERLAY and _pass_is_supported(pass_, plan):
+                target = _target_path_for(pass_)
+                result = execute_single_pass(
+                    pass_, context, video_input=current_video_path, output_path=target,
                     dry_run=effective_dry_run, force=force, runner=runner,
                 )
                 pass_results.append(result)
@@ -974,11 +1157,10 @@ def execute_renderer_plan(
                     final_output_path = str(target)
 
             elif pass_.pass_type == renderer_plan_engine.RenderPassType.MUSIC:
-                video_source = current_video_path
                 target = _target_path_for(pass_)
-                result = _execute_music_pass(
-                    pass_, plan, video_pass_output=video_source, final_output_path=target,
-                    music_config=music_config, dry_run=effective_dry_run, force=force, runner=runner,
+                result = execute_single_pass(
+                    pass_, context, video_input=current_video_path, output_path=target,
+                    dry_run=effective_dry_run, force=force, runner=runner,
                 )
                 pass_results.append(result)
                 if not effective_dry_run:
@@ -1003,8 +1185,9 @@ def execute_renderer_plan(
 
             elif pass_.pass_type == renderer_plan_engine.RenderPassType.FINAL_ENCODE:
                 target = Path(final_output_path) if final_output_path else output_path
-                result = _execute_final_encode_pass(
-                    pass_, final_output_path=target, engine_config=engine_config, dry_run=effective_dry_run
+                result = execute_single_pass(
+                    pass_, context, video_input=None, output_path=target,
+                    dry_run=effective_dry_run, force=force, runner=runner,
                 )
                 pass_results.append(result)
 
