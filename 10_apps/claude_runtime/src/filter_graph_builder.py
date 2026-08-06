@@ -689,6 +689,57 @@ def build_filter_graph(
     return graph
 
 
+def build_filter_graph_from_filters(
+    filters: list[FilterSpec],
+    *,
+    pass_id: str,
+    pass_type: str,
+    hint_type: str | None = None,
+    renderer_plan_id: str = "",
+    overlay_plan_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
+    config: FilterGraphConfig,
+) -> FilterGraph:
+    """
+    Wraps an already-ordered, already-built filter list (e.g. from
+    build_subtitle_filter_spec()) into a single-pass FilterGraph,
+    computing labels/inputs/outputs/graph_id/validation with the same
+    logic build_filter_graph() applies at the end of its own loop.
+    Never reorders or mutates `filters`. Exists so callers that already
+    have concrete FilterSpecs (outside the RendererPlan/OverlayPlan
+    pathway) can still get the full typed FilterGraph structure without
+    re-deriving anything build_filter_graph() itself does not need.
+    """
+    graph_pass = FilterGraphPass(
+        pass_id=pass_id, pass_type=pass_type, hint_type=hint_type,
+        filters=list(filters), dependencies=[],
+    )
+
+    produced = {label for f in filters for label in f.label_out}
+    inputs = _ordered_dedup([label for f in filters for label in f.label_in if label not in produced])
+    labels = _ordered_dedup(inputs + [label for f in filters for label in f.label_out])
+    final_output_label = filters[-1].label_out[-1] if filters else config.initial_input_label
+    outputs = [final_output_label]
+    dependencies = {pass_id: []}
+
+    graph = FilterGraph(
+        schema_version=config.schema_version,
+        renderer_plan_id=renderer_plan_id,
+        overlay_plan_id=overlay_plan_id,
+        passes=[graph_pass],
+        filters=list(filters),
+        labels=labels,
+        inputs=inputs,
+        outputs=outputs,
+        dependencies=dependencies,
+        metadata=dict(metadata or {}, builder_version=config.builder_version),
+    )
+    graph.created_at = _now_iso()
+    graph.graph_id = _compute_graph_id(graph)
+    graph.validation = validate_filter_graph(graph, config)
+    return graph
+
+
 # ---------------------------------------------------------------------------
 # Validation — all pass/fail policy lives here, not in build_filter_graph().
 # ---------------------------------------------------------------------------

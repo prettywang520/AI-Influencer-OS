@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from . import filter_graph_builder, filter_graph_serializer
 from . import subtitle_render_engine as sre
 
 
@@ -90,6 +91,25 @@ class SubtitleRenderTempTestCase(unittest.TestCase):
         )
         defaults.update(overrides)
         return sre.DrawTextCue(**defaults)
+
+    def _build_serialized(
+        self, request: sre.SubtitleRenderRequest, config: sre.SubtitleRenderConfig, *, serializer_config=None,
+    ) -> filter_graph_serializer.SerializedFilterGraph:
+        """Mirrors sre.build_subtitle_render_plan()'s internal FilterGraph
+        pipeline, for tests that exercise build_subtitle_ffmpeg_command()
+        directly/in isolation."""
+        fg_config = filter_graph_builder.load_filter_graph_config()
+        filters = filter_graph_builder.build_subtitle_filter_spec(request, fg_config)
+        if request.mode == sre.SubtitleRenderMode.DRAWTEXT:
+            for index, cue in enumerate(request.cues):
+                resolved_font = sre._resolve_cue_font(cue, config)
+                if resolved_font is not None and resolved_font.font_path:
+                    filters[index].parameters["font_file"] = resolved_font.font_path
+        graph = filter_graph_builder.build_filter_graph_from_filters(
+            filters, pass_id="pass_subtitle", pass_type="subtitle", hint_type=request.mode, config=fg_config,
+        )
+        effective_serializer_config = serializer_config or filter_graph_serializer.load_filter_graph_serializer_config()
+        return filter_graph_serializer.serialize_filter_graph(graph, effective_serializer_config)
 
 
 # ---------------------------------------------------------------------------
@@ -402,219 +422,11 @@ class RequestValidationTests(SubtitleRenderTempTestCase):
 
 
 # ---------------------------------------------------------------------------
-# ASS filter
-# ---------------------------------------------------------------------------
-
-
-class AssFilterTests(SubtitleRenderTempTestCase):
-    def _request(self, *, fontsdir=None, config=None) -> sre.SubtitleRenderRequest:
-        video = self._video()
-        ass = self._ass()
-        return sre.build_subtitle_render_request(
-            mode=sre.SubtitleRenderMode.ASS, video_path=video, output_path=self.temp_dir / "out.mp4",
-            ass_path=ass, fontsdir=fontsdir, config=config or self.config,
-        )
-
-    def test_basic_ass_filter_with_fontsdir(self):
-        fontsdir = self._fontsdir()
-        request = self._request(fontsdir=fontsdir)
-        fragment = sre.build_ass_filter(request, self.config)
-        self.assertTrue(fragment.filter_string.startswith("subtitles=filename="))
-        self.assertIn("fontsdir=", fragment.filter_string)
-
-    def test_ass_filter_without_fontsdir_raises_by_default(self):
-        request = self._request()
-        with self.assertRaises(sre.SubtitleFontResolutionError):
-            sre.build_ass_filter(request, self.config)
-
-    def test_ass_filter_without_fontsdir_ok_when_fontconfig_allowed(self):
-        config = dataclasses.replace(self.config, ass_allow_fontconfig_resolution=True)
-        request = self._request(config=config)
-        fragment = sre.build_ass_filter(request, config)
-        self.assertNotIn("fontsdir=", fragment.filter_string)
-
-    def test_ass_filter_without_fontsdir_ok_when_not_required(self):
-        config = dataclasses.replace(self.config, ass_require_fontsdir_when_custom_fonts=False)
-        request = self._request(config=config)
-        fragment = sre.build_ass_filter(request, config)
-        self.assertNotIn("fontsdir=", fragment.filter_string)
-
-    def test_ass_filter_escapes_single_quote_in_path(self):
-        tricky_dir = self.temp_dir / "it's tricky"
-        tricky_dir.mkdir()
-        ass = tricky_dir / "subs.ass"
-        ass.write_text("[Script Info]\n", encoding="utf-8")
-        video = self._video()
-        fontsdir = self._fontsdir()
-        request = sre.build_subtitle_render_request(
-            mode=sre.SubtitleRenderMode.ASS, video_path=video, output_path=self.temp_dir / "out.mp4",
-            ass_path=ass, fontsdir=fontsdir, config=self.config,
-        )
-        fragment = sre.build_ass_filter(request, self.config)
-        self.assertIn("'\\''", fragment.filter_string)
-        self.assertNotIn("it's tricky'", fragment.filter_string.split("fontsdir")[0].split("'\\''")[0] + "tricky'")
-
-    def test_build_ass_filter_requires_ass_path(self):
-        video = self._video()
-        request = sre.SubtitleRenderRequest(mode=sre.SubtitleRenderMode.ASS, video_path=video, output_path=self.temp_dir / "out.mp4")
-        with self.assertRaises(sre.SubtitleFilterGraphError):
-            sre.build_ass_filter(request, self.config)
-
-
-# ---------------------------------------------------------------------------
-# Drawtext filter
-# ---------------------------------------------------------------------------
-
-
-class DrawTextFilterTests(SubtitleRenderTempTestCase):
-    def test_basic_filter_with_explicit_xy(self):
-        font = self._font()
-        cue = self._cue(font_path=str(font))
-        resolved = sre.resolve_font(explicit_font_path=str(font), font_family=None, config=self.config)
-        fragment = sre.build_drawtext_filter(cue, resolved, self.config)
-        self.assertTrue(fragment.filter_string.startswith("drawtext="))
-        self.assertIn("x=100.0", fragment.filter_string)
-        self.assertIn("y=200.0", fragment.filter_string)
-
-    def test_all_nine_anchors_resolve(self):
-        font = self._font()
-        resolved = sre.resolve_font(explicit_font_path=str(font), font_family=None, config=self.config)
-        for anchor in sre._ANCHOR_MAP:
-            cue = self._cue(x=None, y=None, anchor=anchor)
-            fragment = sre.build_drawtext_filter(cue, resolved, self.config)
-            self.assertIn("x=", fragment.filter_string)
-            self.assertIn("y=", fragment.filter_string)
-
-    def test_bottom_center_uses_margin(self):
-        font = self._font()
-        resolved = sre.resolve_font(explicit_font_path=str(font), font_family=None, config=self.config)
-        cue = self._cue(x=None, y=None, anchor="bottom_center")
-        fragment = sre.build_drawtext_filter(cue, resolved, self.config)
-        self.assertIn("x=(w-text_w)/2", fragment.filter_string)
-        self.assertIn(f"y=h-text_h-{self.config.drawtext_anchor_margin_pixels}", fragment.filter_string)
-
-    def test_unsupported_anchor_raises(self):
-        font = self._font()
-        resolved = sre.resolve_font(explicit_font_path=str(font), font_family=None, config=self.config)
-        cue = self._cue(x=None, y=None, anchor="middle_of_nowhere")
-        with self.assertRaises(sre.SubtitleDrawTextCueError):
-            sre.build_drawtext_filter(cue, resolved, self.config)
-
-    def test_missing_position_raises(self):
-        font = self._font()
-        resolved = sre.resolve_font(explicit_font_path=str(font), font_family=None, config=self.config)
-        cue = self._cue(x=None, y=None, anchor=None)
-        with self.assertRaises(sre.SubtitleDrawTextCueError):
-            sre.build_drawtext_filter(cue, resolved, self.config)
-
-    def test_x_without_y_raises(self):
-        font = self._font()
-        resolved = sre.resolve_font(explicit_font_path=str(font), font_family=None, config=self.config)
-        cue = self._cue(x=100.0, y=None)
-        with self.assertRaises(sre.SubtitleDrawTextCueError):
-            sre.build_drawtext_filter(cue, resolved, self.config)
-
-    def test_non_numeric_x_raises(self):
-        font = self._font()
-        resolved = sre.resolve_font(explicit_font_path=str(font), font_family=None, config=self.config)
-        cue = self._cue(x="(w-text_w)/2", y=100.0)
-        with self.assertRaises(sre.SubtitleDrawTextCueError):
-            sre.build_drawtext_filter(cue, resolved, self.config)
-
-    def test_out_of_canvas_bounds_raises_when_strict(self):
-        font = self._font()
-        resolved = sre.resolve_font(explicit_font_path=str(font), font_family=None, config=self.config)
-        cue = self._cue(x=5000.0, y=200.0)
-        with self.assertRaises(sre.SubtitleDrawTextCueError):
-            sre.build_drawtext_filter(cue, resolved, self.config, canvas_width=1080, canvas_height=1920)
-
-    def test_out_of_canvas_bounds_ignored_without_canvas_dims(self):
-        font = self._font()
-        resolved = sre.resolve_font(explicit_font_path=str(font), font_family=None, config=self.config)
-        cue = self._cue(x=5000.0, y=200.0)
-        fragment = sre.build_drawtext_filter(cue, resolved, self.config)
-        self.assertIn("x=5000.0", fragment.filter_string)
-
-    def test_out_of_canvas_bounds_ignored_when_not_strict(self):
-        font = self._font()
-        resolved = sre.resolve_font(explicit_font_path=str(font), font_family=None, config=self.config)
-        config = dataclasses.replace(self.config, drawtext_strict_canvas_bounds=False)
-        cue = self._cue(x=5000.0, y=200.0)
-        fragment = sre.build_drawtext_filter(cue, resolved, config, canvas_width=1080, canvas_height=1920)
-        self.assertIn("x=5000.0", fragment.filter_string)
-
-    def test_invalid_timing_raises(self):
-        font = self._font()
-        resolved = sre.resolve_font(explicit_font_path=str(font), font_family=None, config=self.config)
-        cue = self._cue(start_seconds=5.0, end_seconds=2.0)
-        with self.assertRaises(sre.SubtitleDrawTextCueError):
-            sre.build_drawtext_filter(cue, resolved, self.config)
-
-    def test_empty_text_raises(self):
-        font = self._font()
-        resolved = sre.resolve_font(explicit_font_path=str(font), font_family=None, config=self.config)
-        cue = self._cue(text="")
-        with self.assertRaises(sre.SubtitleDrawTextCueError):
-            sre.build_drawtext_filter(cue, resolved, self.config)
-
-    def test_missing_font_raises_when_required(self):
-        cue = self._cue()
-        with self.assertRaises(sre.SubtitleFontResolutionError):
-            sre.build_drawtext_filter(cue, None, self.config)
-
-    def test_missing_font_ok_when_not_required(self):
-        config = dataclasses.replace(self.config, drawtext_require_font_file=False)
-        cue = self._cue()
-        fragment = sre.build_drawtext_filter(cue, None, config)
-        self.assertNotIn("fontfile=", fragment.filter_string)
-
-    def test_percent_in_text_is_escaped(self):
-        font = self._font()
-        resolved = sre.resolve_font(explicit_font_path=str(font), font_family=None, config=self.config)
-        cue = self._cue(text="50% off today")
-        fragment = sre.build_drawtext_filter(cue, resolved, self.config)
-        self.assertIn("50%% off today", fragment.filter_string)
-
-    def test_apostrophe_in_text_is_escaped(self):
-        font = self._font()
-        resolved = sre.resolve_font(explicit_font_path=str(font), font_family=None, config=self.config)
-        cue = self._cue(text="it's a test")
-        fragment = sre.build_drawtext_filter(cue, resolved, self.config)
-        self.assertIn("'\\''", fragment.filter_string)
-
-    def test_colon_and_comma_pass_through_inside_quotes(self):
-        font = self._font()
-        resolved = sre.resolve_font(explicit_font_path=str(font), font_family=None, config=self.config)
-        cue = self._cue(text="Chapter 1: Intro, welcome!")
-        fragment = sre.build_drawtext_filter(cue, resolved, self.config)
-        self.assertIn("Chapter 1: Intro, welcome!", fragment.filter_string)
-
-    def test_box_enabled_adds_box_options(self):
-        font = self._font()
-        resolved = sre.resolve_font(explicit_font_path=str(font), font_family=None, config=self.config)
-        cue = self._cue(box_enabled=True, box_color="#000000AA")
-        fragment = sre.build_drawtext_filter(cue, resolved, self.config)
-        self.assertIn("box=1", fragment.filter_string)
-        self.assertIn("boxcolor=", fragment.filter_string)
-
-    def test_box_default_from_config_when_cue_unset(self):
-        font = self._font()
-        resolved = sre.resolve_font(explicit_font_path=str(font), font_family=None, config=self.config)
-        config = dataclasses.replace(self.config, drawtext_box_enabled_default=True)
-        cue = self._cue(box_enabled=None)
-        fragment = sre.build_drawtext_filter(cue, resolved, config)
-        self.assertIn("box=1", fragment.filter_string)
-
-    def test_enable_expression_present(self):
-        font = self._font()
-        resolved = sre.resolve_font(explicit_font_path=str(font), font_family=None, config=self.config)
-        cue = self._cue(start_seconds=1.5, end_seconds=3.25)
-        fragment = sre.build_drawtext_filter(cue, resolved, self.config)
-        self.assertIn("between(t,1.5,3.25)", fragment.filter_string)
-
-
-# ---------------------------------------------------------------------------
-# Command construction
+# Command construction — Phase 11F.3: the -vf/-filter_complex portion
+# now comes from a serialized FilterGraph (see FilterGraphIntegrationTests
+# and test_filter_graph_serializer.py for the ASS/drawtext filter-shape/
+# escaping/anchor-math coverage that used to live in this file directly
+# against the since-removed build_ass_filter()/build_drawtext_filter()).
 # ---------------------------------------------------------------------------
 
 
@@ -627,7 +439,8 @@ class CommandConstructionTests(SubtitleRenderTempTestCase):
             mode=sre.SubtitleRenderMode.ASS, video_path=video, output_path=self.temp_dir / "out.mp4",
             ass_path=ass, fontsdir=fontsdir, config=self.config,
         )
-        command = sre.build_subtitle_ffmpeg_command(request, self.config, resolved_fonts=[])
+        serialized = self._build_serialized(request, self.config)
+        command = sre.build_subtitle_ffmpeg_command(request, self.config, serialized=serialized)
         self.assertEqual(command[0], "ffmpeg")
         self.assertIn("-hide_banner", command)
         self.assertIn("-i", command)
@@ -640,13 +453,16 @@ class CommandConstructionTests(SubtitleRenderTempTestCase):
     def test_drawtext_command_joins_multiple_cues_in_order(self):
         video = self._video()
         font = self._font()
-        cues = [self._cue(text="First"), self._cue(text="Second", start_seconds=2.0, end_seconds=4.0)]
+        cues = [
+            self._cue(text="First", font_path=str(font)),
+            self._cue(text="Second", start_seconds=2.0, end_seconds=4.0, font_path=str(font)),
+        ]
         request = sre.build_subtitle_render_request(
             mode=sre.SubtitleRenderMode.DRAWTEXT, video_path=video, output_path=self.temp_dir / "out.mp4",
             cues=cues, config=self.config,
         )
-        resolved = [sre.resolve_font(explicit_font_path=str(font), font_family=None, config=self.config)] * 2
-        command = sre.build_subtitle_ffmpeg_command(request, self.config, resolved_fonts=resolved)
+        serialized = self._build_serialized(request, self.config)
+        command = sre.build_subtitle_ffmpeg_command(request, self.config, serialized=serialized)
         vf_index = command.index("-vf")
         filter_value = command[vf_index + 1]
         self.assertLess(filter_value.index("First"), filter_value.index("Second"))
@@ -654,12 +470,16 @@ class CommandConstructionTests(SubtitleRenderTempTestCase):
 
     def test_copy_audio_true_uses_dash_c_a_copy(self):
         video = self._video()
+        config = dataclasses.replace(self.config, copy_audio=True, drawtext_require_font_file=False)
         request = sre.build_subtitle_render_request(
             mode=sre.SubtitleRenderMode.DRAWTEXT, video_path=video, output_path=self.temp_dir / "out.mp4",
-            cues=[self._cue()], config=dataclasses.replace(self.config, drawtext_require_font_file=False),
+            cues=[self._cue(font_path=None, font_family=None)], config=config,
         )
-        config = dataclasses.replace(self.config, copy_audio=True, drawtext_require_font_file=False)
-        command = sre.build_subtitle_ffmpeg_command(request, config, resolved_fonts=[None])
+        serializer_config = dataclasses.replace(
+            filter_graph_serializer.load_filter_graph_serializer_config(), drawtext_require_font_file=False
+        )
+        serialized = self._build_serialized(request, config, serializer_config=serializer_config)
+        command = sre.build_subtitle_ffmpeg_command(request, config, serialized=serialized)
         index = command.index("-c:a")
         self.assertEqual(command[index + 1], "copy")
 
@@ -671,9 +491,13 @@ class CommandConstructionTests(SubtitleRenderTempTestCase):
         )
         request = sre.build_subtitle_render_request(
             mode=sre.SubtitleRenderMode.DRAWTEXT, video_path=video, output_path=self.temp_dir / "out.mp4",
-            cues=[self._cue()], config=config,
+            cues=[self._cue(font_path=None, font_family=None)], config=config,
         )
-        command = sre.build_subtitle_ffmpeg_command(request, config, resolved_fonts=[None])
+        serializer_config = dataclasses.replace(
+            filter_graph_serializer.load_filter_graph_serializer_config(), drawtext_require_font_file=False
+        )
+        serialized = self._build_serialized(request, config, serializer_config=serializer_config)
+        command = sre.build_subtitle_ffmpeg_command(request, config, serialized=serialized)
         index = command.index("-c:a")
         self.assertEqual(command[index + 1], "aac")
         self.assertIn("-b:a", command)
@@ -681,56 +505,64 @@ class CommandConstructionTests(SubtitleRenderTempTestCase):
 
     def test_faststart_adds_movflags(self):
         video = self._video()
-        config = dataclasses.replace(self.config, faststart=True, drawtext_require_font_file=False)
+        font = self._font()
+        config = dataclasses.replace(self.config, faststart=True)
         request = sre.build_subtitle_render_request(
             mode=sre.SubtitleRenderMode.DRAWTEXT, video_path=video, output_path=self.temp_dir / "out.mp4",
-            cues=[self._cue()], config=config,
+            cues=[self._cue(font_path=str(font))], config=config,
         )
-        command = sre.build_subtitle_ffmpeg_command(request, config, resolved_fonts=[None])
+        serialized = self._build_serialized(request, config)
+        command = sre.build_subtitle_ffmpeg_command(request, config, serialized=serialized)
         self.assertIn("-movflags", command)
         self.assertIn("+faststart", command)
 
     def test_faststart_disabled_omits_movflags(self):
         video = self._video()
-        config = dataclasses.replace(self.config, faststart=False, drawtext_require_font_file=False)
+        font = self._font()
+        config = dataclasses.replace(self.config, faststart=False)
         request = sre.build_subtitle_render_request(
             mode=sre.SubtitleRenderMode.DRAWTEXT, video_path=video, output_path=self.temp_dir / "out.mp4",
-            cues=[self._cue()], config=config,
+            cues=[self._cue(font_path=str(font))], config=config,
         )
-        command = sre.build_subtitle_ffmpeg_command(request, config, resolved_fonts=[None])
+        serialized = self._build_serialized(request, config)
+        command = sre.build_subtitle_ffmpeg_command(request, config, serialized=serialized)
         self.assertNotIn("-movflags", command)
 
     def test_force_uses_dash_y(self):
         video = self._video()
-        config = dataclasses.replace(self.config, drawtext_require_font_file=False)
+        font = self._font()
         output = self.temp_dir / "out.mp4"
         output.write_bytes(b"existing")
         request = sre.build_subtitle_render_request(
             mode=sre.SubtitleRenderMode.DRAWTEXT, video_path=video, output_path=output,
-            cues=[self._cue()], force=True, config=config,
+            cues=[self._cue(font_path=str(font))], force=True, config=self.config,
         )
-        command = sre.build_subtitle_ffmpeg_command(request, config, resolved_fonts=[None])
+        serialized = self._build_serialized(request, self.config)
+        command = sre.build_subtitle_ffmpeg_command(request, self.config, serialized=serialized)
         self.assertIn("-y", command)
         self.assertNotIn("-n", command)
 
     def test_no_force_uses_dash_n(self):
         video = self._video()
-        config = dataclasses.replace(self.config, drawtext_require_font_file=False)
+        font = self._font()
         request = sre.build_subtitle_render_request(
             mode=sre.SubtitleRenderMode.DRAWTEXT, video_path=video, output_path=self.temp_dir / "out.mp4",
-            cues=[self._cue()], config=config,
+            cues=[self._cue(font_path=str(font))], config=self.config,
         )
-        command = sre.build_subtitle_ffmpeg_command(request, config, resolved_fonts=[None])
+        serialized = self._build_serialized(request, self.config)
+        command = sre.build_subtitle_ffmpeg_command(request, self.config, serialized=serialized)
         self.assertIn("-n", command)
 
     def test_hide_banner_disabled(self):
         video = self._video()
-        config = dataclasses.replace(self.config, ffmpeg_hide_banner=False, drawtext_require_font_file=False)
+        font = self._font()
+        config = dataclasses.replace(self.config, ffmpeg_hide_banner=False)
         request = sre.build_subtitle_render_request(
             mode=sre.SubtitleRenderMode.DRAWTEXT, video_path=video, output_path=self.temp_dir / "out.mp4",
-            cues=[self._cue()], config=config,
+            cues=[self._cue(font_path=str(font))], config=config,
         )
-        command = sre.build_subtitle_ffmpeg_command(request, config, resolved_fonts=[None])
+        serialized = self._build_serialized(request, config)
+        command = sre.build_subtitle_ffmpeg_command(request, config, serialized=serialized)
         self.assertNotIn("-hide_banner", command)
 
 
@@ -753,6 +585,10 @@ class PlanTests(SubtitleRenderTempTestCase):
         self.assertTrue(plan.render_id)
         self.assertFalse((self.temp_dir / "out.mp4").exists())
         self.assertEqual(plan.subtitle_asset.asset_type, "ass")
+        self.assertTrue(plan.filter_graph_id)
+        self.assertTrue(plan.filter_graph_validation_passed)
+        self.assertTrue(plan.serialization_id)
+        self.assertEqual(plan.output_mode, "simple_vf")
 
     def test_drawtext_plan_builds(self):
         video = self._video()
@@ -792,6 +628,212 @@ class PlanTests(SubtitleRenderTempTestCase):
         plan_a = sre.build_subtitle_render_plan(request_a, self.config)
         plan_b = sre.build_subtitle_render_plan(request_b, self.config)
         self.assertNotEqual(plan_a.render_id, plan_b.render_id)
+
+
+# ---------------------------------------------------------------------------
+# FilterGraph / serializer integration (Phase 11F.3)
+# ---------------------------------------------------------------------------
+
+
+def _counting_wrapper(real_func):
+    calls: list[tuple[tuple, dict]] = []
+
+    def wrapper(*args, **kwargs):
+        calls.append((args, kwargs))
+        return real_func(*args, **kwargs)
+
+    wrapper.calls = calls
+    return wrapper
+
+
+class FilterGraphIntegrationTests(SubtitleRenderTempTestCase):
+    def _drawtext_request(self):
+        video = self._video()
+        font = self._font()
+        return sre.build_subtitle_render_request(
+            mode=sre.SubtitleRenderMode.DRAWTEXT, video_path=video, output_path=self.temp_dir / "out.mp4",
+            cues=[self._cue(font_path=str(font))], config=self.config,
+        )
+
+    def test_drawtext_routes_through_filter_graph_builder(self):
+        request = self._drawtext_request()
+        builder_spy = _counting_wrapper(filter_graph_builder.build_subtitle_filter_spec)
+        plan = sre.build_subtitle_render_plan(request, self.config, filter_graph_builder_callable=builder_spy)
+        self.assertEqual(len(builder_spy.calls), 1)
+        self.assertTrue(plan.filter_graph_id)
+
+    def test_ass_routes_through_filter_graph_builder(self):
+        video = self._video()
+        ass = self._ass()
+        fontsdir = self._fontsdir()
+        request = sre.build_subtitle_render_request(
+            mode=sre.SubtitleRenderMode.ASS, video_path=video, output_path=self.temp_dir / "out.mp4",
+            ass_path=ass, fontsdir=fontsdir, config=self.config,
+        )
+        builder_spy = _counting_wrapper(filter_graph_builder.build_subtitle_filter_spec)
+        plan = sre.build_subtitle_render_plan(request, self.config, filter_graph_builder_callable=builder_spy)
+        self.assertEqual(len(builder_spy.calls), 1)
+        self.assertTrue(plan.filter_graph_id)
+
+    def test_validator_called_exactly_once(self):
+        request = self._drawtext_request()
+        validator_spy = _counting_wrapper(filter_graph_builder.build_filter_graph_from_filters)
+        sre.build_subtitle_render_plan(request, self.config, filter_graph_validator_callable=validator_spy)
+        self.assertEqual(len(validator_spy.calls), 1)
+
+    def test_serializer_called_exactly_once(self):
+        request = self._drawtext_request()
+        serializer_spy = _counting_wrapper(filter_graph_serializer.serialize_filter_graph)
+        sre.build_subtitle_render_plan(request, self.config, filter_graph_serializer_callable=serializer_spy)
+        self.assertEqual(len(serializer_spy.calls), 1)
+
+    def test_serialized_vf_content_in_final_command(self):
+        request = self._drawtext_request()
+        plan = sre.build_subtitle_render_plan(request, self.config)
+        self.assertIn("-vf", plan.command)
+        vf_index = plan.command.index("-vf")
+        self.assertIn("drawtext=", plan.command[vf_index + 1])
+        self.assertIn("Hello world", plan.command[vf_index + 1])
+
+    def test_filter_complex_mode_honored_when_forced(self):
+        request = self._drawtext_request()
+        forced_config = dataclasses.replace(
+            filter_graph_serializer.load_filter_graph_serializer_config(), force_filter_complex=True
+        )
+        plan = sre.build_subtitle_render_plan(request, self.config, serializer_config=forced_config)
+        self.assertEqual(plan.output_mode, "filter_complex")
+        self.assertIn("-filter_complex", plan.command)
+        self.assertNotIn("-vf", plan.command)
+
+    def test_graph_validation_failure_raises_subtitle_render_filter_graph_error(self):
+        request = self._drawtext_request()
+
+        def broken_validator(filters, **kwargs):
+            graph = filter_graph_builder.build_filter_graph_from_filters(filters, **kwargs)
+            graph.validation.passed = False
+            graph.validation.errors = ["synthetic failure for test"]
+            return graph
+
+        with self.assertRaises(sre.SubtitleRenderFilterGraphError):
+            sre.build_subtitle_render_plan(request, self.config, filter_graph_validator_callable=broken_validator)
+
+    def test_graph_validation_failure_prevents_runner_call(self):
+        request = self._drawtext_request()
+        runner = FakeRunner()
+
+        def broken_validator(filters, **kwargs):
+            graph = filter_graph_builder.build_filter_graph_from_filters(filters, **kwargs)
+            graph.validation.passed = False
+            graph.validation.errors = ["synthetic failure for test"]
+            return graph
+
+        with self.assertRaises(sre.SubtitleRenderFilterGraphError):
+            sre.execute_subtitle_render_plan(
+                request, self.config, runner=runner, filter_graph_validator_callable=broken_validator
+            )
+        self.assertEqual(len(runner.calls), 0)
+
+    def test_serializer_failure_raises_subtitle_render_filter_graph_error(self):
+        request = self._drawtext_request()
+
+        def broken_serializer(graph, config):
+            raise filter_graph_serializer.FilterGraphSerializerError("synthetic serializer failure")
+
+        with self.assertRaises(sre.SubtitleRenderFilterGraphError):
+            sre.build_subtitle_render_plan(request, self.config, filter_graph_serializer_callable=broken_serializer)
+
+    def test_serializer_failure_prevents_runner_call(self):
+        request = self._drawtext_request()
+        runner = FakeRunner()
+
+        def broken_serializer(graph, config):
+            raise filter_graph_serializer.FilterGraphSerializerError("synthetic serializer failure")
+
+        with self.assertRaises(sre.SubtitleRenderFilterGraphError):
+            sre.execute_subtitle_render_plan(
+                request, self.config, runner=runner, filter_graph_serializer_callable=broken_serializer
+            )
+        self.assertEqual(len(runner.calls), 0)
+
+    def test_builder_failure_raises_subtitle_render_filter_graph_error(self):
+        request = self._drawtext_request()
+
+        def broken_builder(request, config):
+            raise filter_graph_builder.FilterGraphBuilderError("synthetic builder failure")
+
+        with self.assertRaises(sre.SubtitleRenderFilterGraphError):
+            sre.build_subtitle_render_plan(request, self.config, filter_graph_builder_callable=broken_builder)
+
+    def test_dry_run_reports_graph_and_serialization_diagnostics(self):
+        request = self._drawtext_request()
+        plan = sre.build_subtitle_render_plan(request, self.config)
+        self.assertFalse(request.output_path.exists())
+        self.assertTrue(plan.filter_graph_id)
+        self.assertTrue(plan.serialization_id)
+        self.assertTrue(plan.filter_graph_validation_passed)
+
+    def test_successful_fake_render_unchanged(self):
+        request = self._drawtext_request()
+        config = dataclasses.replace(self.config, diagnostics_write_log=False)
+        runner = FakeRunner()
+        result = sre.execute_subtitle_render_plan(request, config, runner=runner)
+        self.assertEqual(result.return_code, 0)
+        self.assertTrue(result.output_exists)
+        self.assertEqual(len(runner.calls), 1)
+        self.assertTrue(result.filter_graph_id)
+        self.assertTrue(result.serialization_id)
+
+    def test_font_resolution_unchanged(self):
+        video = self._video()
+        font = self._font()
+        request = sre.build_subtitle_render_request(
+            mode=sre.SubtitleRenderMode.DRAWTEXT, video_path=video, output_path=self.temp_dir / "out.mp4",
+            cues=[self._cue(font_path=str(font))], config=self.config,
+        )
+        plan = sre.build_subtitle_render_plan(request, self.config)
+        self.assertEqual(len(plan.font_resolution), 1)
+        self.assertEqual(plan.font_resolution[0].font_path, str(font))
+        self.assertEqual(plan.font_resolution[0].source, "explicit")
+
+    def test_audio_mapping_unchanged(self):
+        request = self._drawtext_request()
+        config = dataclasses.replace(self.config, copy_audio=False, audio_codec_when_reencode_required="aac", audio_bitrate="128k")
+        plan = sre.build_subtitle_render_plan(request, config)
+        index = plan.command.index("-c:a")
+        self.assertEqual(plan.command[index + 1], "aac")
+
+    def test_output_verification_unchanged(self):
+        request = self._drawtext_request()
+        config = dataclasses.replace(self.config, diagnostics_write_log=False)
+        runner = FakeRunner()
+        result = sre.execute_subtitle_render_plan(request, config, runner=runner)
+        self.assertTrue(result.output_exists)
+        self.assertGreater(result.output_size_bytes, 0)
+
+    def test_source_hashes_unchanged_after_planning(self):
+        import hashlib
+
+        video = self._video()
+        font = self._font()
+        request = sre.build_subtitle_render_request(
+            mode=sre.SubtitleRenderMode.DRAWTEXT, video_path=video, output_path=self.temp_dir / "out.mp4",
+            cues=[self._cue(font_path=str(font))], config=self.config,
+        )
+        before_video = hashlib.sha256(video.read_bytes()).hexdigest()
+        before_font = hashlib.sha256(font.read_bytes()).hexdigest()
+        sre.build_subtitle_render_plan(request, self.config)
+        self.assertEqual(hashlib.sha256(video.read_bytes()).hexdigest(), before_video)
+        self.assertEqual(hashlib.sha256(font.read_bytes()).hexdigest(), before_font)
+
+    def test_source_hashes_unchanged_after_execution(self):
+        import hashlib
+
+        request = self._drawtext_request()
+        config = dataclasses.replace(self.config, diagnostics_write_log=False)
+        before_video = hashlib.sha256(request.video_path.read_bytes()).hexdigest()
+        runner = FakeRunner()
+        sre.execute_subtitle_render_plan(request, config, runner=runner)
+        self.assertEqual(hashlib.sha256(request.video_path.read_bytes()).hexdigest(), before_video)
 
 
 # ---------------------------------------------------------------------------
@@ -1138,6 +1180,22 @@ class StructuralSafetyTests(unittest.TestCase):
         import re
         self.assertIsNone(re.search(r"request\.mode\s*=(?!=)", self.source_text))
         self.assertNotIn("if config.allow_mode_fallback", self.source_text)
+
+    def test_no_independent_filter_string_escaping(self):
+        # Phase 11F.3: escaping/filter-string construction moved to
+        # filter_graph_serializer.py -- this module must not define its
+        # own copies anymore.
+        for forbidden in (
+            "_escape_ffmpeg_quoted_value", "_escape_drawtext_percent",
+            "_ANCHOR_MAP", "_anchor_expression", "SubtitleFilterFragment",
+            "def build_ass_filter(", "def build_drawtext_filter(",
+        ):
+            self.assertNotIn(forbidden, self.source_text)
+
+    def test_uses_filter_graph_builder_and_serializer(self):
+        self.assertIn("filter_graph_builder.build_subtitle_filter_spec", self.source_text)
+        self.assertIn("filter_graph_builder.build_filter_graph_from_filters", self.source_text)
+        self.assertIn("filter_graph_serializer.serialize_filter_graph", self.source_text)
 
 
 if __name__ == "__main__":

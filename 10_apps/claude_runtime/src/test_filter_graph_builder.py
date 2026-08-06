@@ -679,6 +679,80 @@ class BuildFilterGraphTests(FilterGraphTempTestCase):
 
 
 # ---------------------------------------------------------------------------
+# build_filter_graph_from_filters() (Phase 11F.3) — wraps an
+# already-built filter list into a single-pass FilterGraph without a
+# RendererPlan/OverlayPlan.
+# ---------------------------------------------------------------------------
+
+
+class BuildFilterGraphFromFiltersTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.config = fgb.FilterGraphConfig()
+
+    def test_single_filter_wraps_into_one_pass(self):
+        spec = fgb.FilterSpec(filter_id="f1", filter_type=fgb.FilterType.ASS, label_in=["0:v"], label_out=["v0"], parameters={"ass_path": "/a.ass"})
+        graph = fgb.build_filter_graph_from_filters([spec], pass_id="pass_subtitle", pass_type="subtitle", hint_type="ass", config=self.config)
+        self.assertEqual(len(graph.passes), 1)
+        self.assertEqual(graph.passes[0].pass_id, "pass_subtitle")
+        self.assertEqual(graph.passes[0].pass_type, "subtitle")
+        self.assertEqual(graph.passes[0].hint_type, "ass")
+
+    def test_final_output_is_last_filter_output(self):
+        spec1 = fgb.FilterSpec(filter_id="f1", filter_type=fgb.FilterType.DRAWTEXT, label_in=["0:v"], label_out=["v0"], parameters={"text": "a", "x": 1, "y": 1})
+        spec2 = fgb.FilterSpec(filter_id="f2", filter_type=fgb.FilterType.DRAWTEXT, label_in=["v0"], label_out=["v1"], parameters={"text": "b", "x": 1, "y": 1})
+        graph = fgb.build_filter_graph_from_filters([spec1, spec2], pass_id="p", pass_type="subtitle", config=self.config)
+        self.assertEqual(graph.outputs, ["v1"])
+
+    def test_empty_filters_uses_initial_input_label(self):
+        graph = fgb.build_filter_graph_from_filters([], pass_id="p", pass_type="subtitle", config=self.config)
+        self.assertEqual(graph.outputs, [self.config.initial_input_label])
+        self.assertEqual(graph.passes[0].filters, [])
+
+    def test_never_mutates_or_reorders_input_filters(self):
+        spec1 = fgb.FilterSpec(filter_id="f1", filter_type=fgb.FilterType.SCALE, label_in=["0:v"], label_out=["v0"], parameters={"width": 10, "height": 20})
+        spec2 = fgb.FilterSpec(filter_id="f2", filter_type=fgb.FilterType.FORMAT, label_in=["v0"], label_out=["v1"], parameters={})
+        filters = [spec1, spec2]
+        graph = fgb.build_filter_graph_from_filters(filters, pass_id="p", pass_type="video", config=self.config)
+        self.assertEqual([f.filter_id for f in graph.filters], ["f1", "f2"])
+        self.assertEqual(filters, [spec1, spec2])
+
+    def test_graph_id_and_validation_populated(self):
+        spec = fgb.FilterSpec(filter_id="f1", filter_type=fgb.FilterType.ASS, label_in=["0:v"], label_out=["v0"], parameters={"ass_path": "/a.ass"})
+        graph = fgb.build_filter_graph_from_filters([spec], pass_id="p", pass_type="subtitle", config=self.config)
+        self.assertTrue(graph.graph_id)
+        self.assertTrue(graph.validation.passed)
+
+    def test_optional_renderer_and_overlay_plan_ids(self):
+        spec = fgb.FilterSpec(filter_id="f1", filter_type=fgb.FilterType.ASS, label_in=["0:v"], label_out=["v0"], parameters={"ass_path": "/a.ass"})
+        graph = fgb.build_filter_graph_from_filters(
+            [spec], pass_id="p", pass_type="subtitle", renderer_plan_id="rp1", overlay_plan_id="op1", config=self.config,
+        )
+        self.assertEqual(graph.renderer_plan_id, "rp1")
+        self.assertEqual(graph.overlay_plan_id, "op1")
+
+    def test_metadata_merged_with_builder_version(self):
+        spec = fgb.FilterSpec(filter_id="f1", filter_type=fgb.FilterType.ASS, label_in=["0:v"], label_out=["v0"], parameters={"ass_path": "/a.ass"})
+        graph = fgb.build_filter_graph_from_filters(
+            [spec], pass_id="p", pass_type="subtitle", metadata={"canvas_width": 1080}, config=self.config,
+        )
+        self.assertEqual(graph.metadata["canvas_width"], 1080)
+        self.assertIn("builder_version", graph.metadata)
+
+    def test_dependencies_default_empty(self):
+        spec = fgb.FilterSpec(filter_id="f1", filter_type=fgb.FilterType.ASS, label_in=["0:v"], label_out=["v0"], parameters={"ass_path": "/a.ass"})
+        graph = fgb.build_filter_graph_from_filters([spec], pass_id="p", pass_type="subtitle", config=self.config)
+        self.assertEqual(graph.dependencies, {"p": []})
+
+    def test_does_not_affect_build_filter_graph(self):
+        # Structural sanity: the additive function must not share
+        # mutable state with build_filter_graph()'s own label allocator.
+        spec = fgb.FilterSpec(filter_id="f1", filter_type=fgb.FilterType.ASS, label_in=["0:v"], label_out=["v0"], parameters={"ass_path": "/a.ass"})
+        graph_a = fgb.build_filter_graph_from_filters([spec], pass_id="p", pass_type="subtitle", config=self.config)
+        graph_b = fgb.build_filter_graph_from_filters([spec], pass_id="p", pass_type="subtitle", config=self.config)
+        self.assertEqual(graph_a.graph_id, graph_b.graph_id)
+
+
+# ---------------------------------------------------------------------------
 # Deterministic graph_id
 # ---------------------------------------------------------------------------
 

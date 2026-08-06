@@ -9,9 +9,22 @@ import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 import yaml
+
+if TYPE_CHECKING:
+    from . import filter_graph_builder, filter_graph_serializer
+
+# NOTE: filter_graph_builder.py imports this module (for
+# SubtitleRenderRequest/DrawTextCue/SubtitleRenderMode type references
+# and build_subtitle_filter_spec(), added in Phase 11F.2). Importing it
+# back at module load time here would create a circular import, so
+# filter_graph_builder/filter_graph_serializer are imported lazily
+# inside build_subtitle_render_plan() instead -- by the time that
+# function actually runs, both modules are fully initialized. Type
+# hints below are annotation-only (see `from __future__ import
+# annotations`) and never require the real module at import time.
 
 # Phase 11F.1 — Subtitle Render Engine. The first module in this
 # pipeline permitted to burn real subtitles into video. Standalone and
@@ -34,6 +47,14 @@ import yaml
 # ProcessResult/SubprocessRunner/default_runner trio and command
 # builder -- the same convention video_engine.py/music_mixer.py/
 # media_inspector.py each already follow independently.
+#
+# Phase 11F.3 — filter ordering, graph labels, filter dependencies,
+# drawtext cue ordering, and ASS/drawtext filter-node structure are no
+# longer decided here: they come from filter_graph_builder.py's typed
+# FilterGraph, converted into real ffmpeg filter syntax by
+# filter_graph_serializer.py. This module keeps: request validation,
+# font/subtitle-asset resolution, building the complete ffmpeg
+# command, execution, output verification, and diagnostics.
 
 DEFAULT_SUBTITLE_RENDER_CONFIG_RELATIVE_PATH = Path("config") / "video" / "subtitle_render.yaml"
 
@@ -130,6 +151,12 @@ class SubtitleRenderVerificationError(SubtitleRenderEngineError):
 class SubtitleTemporaryFileError(SubtitleRenderEngineError):
     """Raised when a temporary/diagnostic file cannot be safely written
     or cleaned up."""
+
+
+class SubtitleRenderFilterGraphError(SubtitleRenderEngineError):
+    """Raised when filter_graph_builder.py planning/validation or
+    filter_graph_serializer.py serialization fails while building a
+    subtitle render plan. The original error message is preserved."""
 
 
 # ---------------------------------------------------------------------------
@@ -361,11 +388,6 @@ class DrawTextCue:
 
 
 @dataclass(slots=True)
-class SubtitleFilterFragment:
-    filter_string: str = ""
-
-
-@dataclass(slots=True)
 class SubtitleRenderAsset:
     asset_type: str = ""  # ass | drawtext
     path: str = ""
@@ -400,6 +422,11 @@ class SubtitleRenderPlan:
     subtitle_asset: SubtitleRenderAsset | None = None
     font_resolution: list[ResolvedFont] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    # Phase 11F.3 — additive FilterGraph/serialization diagnostics.
+    filter_graph_id: str = ""
+    filter_graph_validation_passed: bool = False
+    serialization_id: str = ""
+    output_mode: str = ""
 
 
 @dataclass(slots=True)
@@ -424,6 +451,11 @@ class SubtitleRenderResult:
     temporary_files: list[str] = field(default_factory=list)
     cleanup_result: str = "retained"
     error: str | None = None
+    # Phase 11F.3 — additive FilterGraph/serialization diagnostics.
+    filter_graph_id: str = ""
+    filter_graph_validation_passed: bool = False
+    serialization_id: str = ""
+    output_mode: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -484,53 +516,6 @@ def _resolve_cue_font(cue: DrawTextCue, config: SubtitleRenderConfig) -> Resolve
         if config.drawtext_require_font_file:
             raise
         return None
-
-
-# ---------------------------------------------------------------------------
-# ffmpeg filter-string escaping
-# ---------------------------------------------------------------------------
-
-
-def _escape_ffmpeg_quoted_value(value: str) -> str:
-    """
-    Wraps `value` in single quotes for ffmpeg filtergraph syntax. Single
-    quotes make every character literal except the quote itself, which
-    is escaped via ffmpeg's own '\\'' close-escape-reopen sequence --
-    the same convention already proven correct in
-    video_engine.VideoEngine._escape_manifest_path(). Backslashes,
-    colons, commas, spaces, and Unicode never need separate escaping
-    when wrapped this way.
-    """
-    escaped = value.replace("'", "'\\''")
-    return f"'{escaped}'"
-
-
-def _escape_drawtext_percent(text: str) -> str:
-    """drawtext's own '%' text-expansion escape is independent of the
-    outer filtergraph quoting mechanism and must always be doubled."""
-    return text.replace("%", "%%")
-
-
-_ANCHOR_MAP: dict[str, tuple[str, str]] = {
-    "top_left": ("left", "top"),
-    "top_center": ("center", "top"),
-    "top_right": ("right", "top"),
-    "center_left": ("left", "center"),
-    "center": ("center", "center"),
-    "center_right": ("right", "center"),
-    "bottom_left": ("left", "bottom"),
-    "bottom_center": ("center", "bottom"),
-    "bottom_right": ("right", "bottom"),
-}
-
-
-def _anchor_expression(anchor: str, margin: float) -> tuple[str, str]:
-    if anchor not in _ANCHOR_MAP:
-        raise SubtitleDrawTextCueError(f"Unsupported anchor {anchor!r}; expected one of {sorted(_ANCHOR_MAP)}")
-    x_key, y_key = _ANCHOR_MAP[anchor]
-    x_expr = {"left": str(margin), "center": "(w-text_w)/2", "right": f"w-text_w-{margin}"}[x_key]
-    y_expr = {"top": str(margin), "center": "(h-text_h)/2", "bottom": f"h-text_h-{margin}"}[y_key]
-    return x_expr, y_expr
 
 
 # ---------------------------------------------------------------------------
@@ -634,96 +619,9 @@ def build_subtitle_render_request(
 
 
 # ---------------------------------------------------------------------------
-# ASS filter — conceptually subtitles=filename='...':fontsdir='...'.
-# Never parses or rewrites .ass file content.
-# ---------------------------------------------------------------------------
-
-
-def build_ass_filter(request: SubtitleRenderRequest, config: SubtitleRenderConfig) -> SubtitleFilterFragment:
-    if request.ass_path is None:
-        raise SubtitleFilterGraphError("build_ass_filter requires request.ass_path")
-
-    parts = [f"filename={_escape_ffmpeg_quoted_value(str(request.ass_path))}"]
-
-    if request.fontsdir is not None:
-        parts.append(f"fontsdir={_escape_ffmpeg_quoted_value(str(request.fontsdir))}")
-    elif config.ass_require_fontsdir_when_custom_fonts and not config.ass_allow_fontconfig_resolution:
-        raise SubtitleFontResolutionError(
-            "ASS mode has no fontsdir and config requires one when fontconfig resolution is "
-            "not allowed; pass fontsdir or enable ass.allow_fontconfig_resolution"
-        )
-
-    return SubtitleFilterFragment(filter_string="subtitles=" + ":".join(parts))
-
-
-# ---------------------------------------------------------------------------
-# Drawtext filter — one chained filter fragment per cue.
-# ---------------------------------------------------------------------------
-
-
-def build_drawtext_filter(
-    cue: DrawTextCue,
-    resolved_font: ResolvedFont | None,
-    config: SubtitleRenderConfig,
-    *,
-    canvas_width: int | None = None,
-    canvas_height: int | None = None,
-) -> SubtitleFilterFragment:
-    if cue.x is not None and not isinstance(cue.x, (int, float)):
-        raise SubtitleDrawTextCueError(f"cue.x expected numeric, got {type(cue.x).__name__}")
-    if cue.y is not None and not isinstance(cue.y, (int, float)):
-        raise SubtitleDrawTextCueError(f"cue.y expected numeric, got {type(cue.y).__name__}")
-
-    if cue.x is not None and cue.y is not None:
-        if config.drawtext_strict_canvas_bounds and canvas_width is not None and canvas_height is not None:
-            if not (0 <= cue.x <= canvas_width) or not (0 <= cue.y <= canvas_height):
-                raise SubtitleDrawTextCueError(
-                    f"cue position ({cue.x}, {cue.y}) is outside canvas bounds "
-                    f"0-{canvas_width} x 0-{canvas_height}"
-                )
-        x_expr, y_expr = str(cue.x), str(cue.y)
-    elif cue.x is not None or cue.y is not None:
-        raise SubtitleDrawTextCueError("cue must specify both x and y, or neither (use anchor instead)")
-    elif cue.anchor:
-        x_expr, y_expr = _anchor_expression(cue.anchor, config.drawtext_anchor_margin_pixels)
-    else:
-        raise SubtitleDrawTextCueError("cue has no x/y position and no anchor; cannot place text")
-
-    if cue.end_seconds <= cue.start_seconds:
-        raise SubtitleDrawTextCueError(
-            f"cue end_seconds ({cue.end_seconds}) must be greater than start_seconds ({cue.start_seconds})"
-        )
-    if not cue.text:
-        raise SubtitleDrawTextCueError("cue.text must not be empty")
-
-    parts = [f"text={_escape_ffmpeg_quoted_value(_escape_drawtext_percent(cue.text))}"]
-
-    if resolved_font is not None and resolved_font.font_path:
-        parts.append(f"fontfile={_escape_ffmpeg_quoted_value(resolved_font.font_path)}")
-    elif config.drawtext_require_font_file:
-        raise SubtitleFontResolutionError(f"drawtext cue {cue.text!r} requires a resolved font file")
-
-    parts.append(f"fontsize={cue.font_size}")
-    parts.append(f"fontcolor={_escape_ffmpeg_quoted_value(cue.font_color)}")
-    parts.append(f"bordercolor={_escape_ffmpeg_quoted_value(cue.outline_color)}")
-    parts.append(f"borderw={cue.outline_width}")
-    parts.append(f"x={x_expr}")
-    parts.append(f"y={y_expr}")
-
-    box_enabled = cue.box_enabled if cue.box_enabled is not None else config.drawtext_box_enabled_default
-    if box_enabled:
-        box_color = cue.box_color or config.drawtext_default_box_color
-        parts.append("box=1")
-        parts.append(f"boxcolor={_escape_ffmpeg_quoted_value(box_color)}")
-
-    enable_expression = f"between(t,{cue.start_seconds},{cue.end_seconds})"
-    parts.append(f"enable={_escape_ffmpeg_quoted_value(enable_expression)}")
-
-    return SubtitleFilterFragment(filter_string="drawtext=" + ":".join(parts))
-
-
-# ---------------------------------------------------------------------------
-# Command construction
+# Command construction — the filter portion (-vf/-filter_complex) comes
+# from an already-serialized FilterGraph (Phase 11F.3); everything else
+# (input, codec, audio, faststart, output path) is unchanged from 11F.1.
 # ---------------------------------------------------------------------------
 
 
@@ -731,7 +629,7 @@ def build_subtitle_ffmpeg_command(
     request: SubtitleRenderRequest,
     config: SubtitleRenderConfig,
     *,
-    resolved_fonts: list[ResolvedFont | None],
+    serialized: filter_graph_serializer.SerializedFilterGraph,
 ) -> list[str]:
     command = [config.ffmpeg_binary]
 
@@ -742,22 +640,7 @@ def build_subtitle_ffmpeg_command(
     command.append("-y" if request.force else "-n")
     command.extend(["-i", str(request.video_path)])
 
-    if request.mode == SubtitleRenderMode.ASS:
-        fragment = build_ass_filter(request, config)
-    else:
-        fragments = [
-            build_drawtext_filter(
-                cue,
-                resolved_fonts[index] if index < len(resolved_fonts) else None,
-                config,
-                canvas_width=request.canvas_width,
-                canvas_height=request.canvas_height,
-            )
-            for index, cue in enumerate(request.cues)
-        ]
-        fragment = SubtitleFilterFragment(filter_string=",".join(f.filter_string for f in fragments))
-
-    command.extend(["-vf", fragment.filter_string])
+    command.extend([serialized.filter_argument_name, serialized.filter_expression])
 
     command.extend(["-c:v", config.video_codec])
     command.extend(["-preset", config.video_preset])
@@ -824,15 +707,70 @@ def _compute_render_id(request: SubtitleRenderRequest, resolved_fonts: list[Reso
 # ---------------------------------------------------------------------------
 
 
-def build_subtitle_render_plan(request: SubtitleRenderRequest, config: SubtitleRenderConfig) -> SubtitleRenderPlan:
+def build_subtitle_render_plan(
+    request: SubtitleRenderRequest,
+    config: SubtitleRenderConfig,
+    *,
+    filter_graph_builder_callable=None,
+    filter_graph_validator_callable=None,
+    filter_graph_serializer_callable=None,
+    serializer_config: filter_graph_serializer.FilterGraphSerializerConfig | None = None,
+) -> SubtitleRenderPlan:
+    """
+    Phase 11F.3 flow: SubtitleRenderRequest -> filter_graph_builder's
+    semantic FilterSpecs -> (font resolution injected here, the only
+    filesystem-touching step) -> typed FilterGraph (built+validated) ->
+    filter_graph_serializer's real ffmpeg filter syntax -> ffmpeg
+    command. Filter ordering/labels/dependencies/drawtext cue ordering/
+    ASS-drawtext filter-node structure are no longer decided in this
+    module. The four *_callable/serializer_config parameters are
+    additive dependency-injection hooks (default to the real
+    implementations) for tests that need to observe/replace a stage.
+    """
+    from . import filter_graph_builder, filter_graph_serializer  # local: avoids a circular import at module load time
+
+    build_filters = filter_graph_builder_callable or filter_graph_builder.build_subtitle_filter_spec
+    build_graph = filter_graph_validator_callable or filter_graph_builder.build_filter_graph_from_filters
+    serialize = filter_graph_serializer_callable or filter_graph_serializer.serialize_filter_graph
+    effective_serializer_config = serializer_config or filter_graph_serializer.load_filter_graph_serializer_config()
+
+    fg_config = filter_graph_builder.load_filter_graph_config()
+
+    try:
+        filter_specs = build_filters(request, fg_config)
+    except filter_graph_builder.FilterGraphBuilderError as exc:
+        raise SubtitleRenderFilterGraphError(f"Failed to build filter graph specs: {exc}") from exc
+
     resolved_fonts: list[ResolvedFont | None] = []
     if request.mode == SubtitleRenderMode.DRAWTEXT:
-        resolved_fonts = [_resolve_cue_font(cue, config) for cue in request.cues]
-
-    command = build_subtitle_ffmpeg_command(request, config, resolved_fonts=resolved_fonts)
+        for index, cue in enumerate(request.cues):
+            resolved_font = _resolve_cue_font(cue, config)
+            resolved_fonts.append(resolved_font)
+            if index < len(filter_specs) and resolved_font is not None and resolved_font.font_path:
+                filter_specs[index].parameters["font_file"] = resolved_font.font_path
 
     known_fonts = [f for f in resolved_fonts if f is not None]
     render_id = _compute_render_id(request, known_fonts)
+
+    try:
+        graph = build_graph(
+            filter_specs, pass_id="pass_subtitle", pass_type="subtitle", hint_type=request.mode,
+            config=fg_config,
+        )
+    except filter_graph_builder.FilterGraphBuilderError as exc:
+        raise SubtitleRenderFilterGraphError(f"Failed to build filter graph: {exc}") from exc
+
+    if not graph.validation.passed:
+        raise SubtitleRenderFilterGraphError(
+            f"Filter graph {graph.graph_id} failed validation: {'; '.join(graph.validation.errors)}"
+        )
+
+    try:
+        serialized = serialize(graph, effective_serializer_config)
+    except filter_graph_serializer.FilterGraphSerializerError as exc:
+        raise SubtitleRenderFilterGraphError(f"Failed to serialize filter graph: {exc}") from exc
+
+    command = build_subtitle_ffmpeg_command(request, config, serialized=serialized)
 
     if request.ass_path is not None:
         subtitle_asset = SubtitleRenderAsset(asset_type="ass", path=str(request.ass_path))
@@ -850,6 +788,10 @@ def build_subtitle_render_plan(request: SubtitleRenderRequest, config: SubtitleR
         subtitle_asset=subtitle_asset,
         font_resolution=known_fonts,
         warnings=[],
+        filter_graph_id=graph.graph_id,
+        filter_graph_validation_passed=graph.validation.passed,
+        serialization_id=serialized.serialization_id,
+        output_mode=serialized.output_mode,
     )
 
 
@@ -890,8 +832,18 @@ def execute_subtitle_render_plan(
     *,
     runner: SubprocessRunner = default_runner,
     inspector: Callable[[Path], Any] | None = None,
+    filter_graph_builder_callable=None,
+    filter_graph_validator_callable=None,
+    filter_graph_serializer_callable=None,
+    serializer_config: filter_graph_serializer.FilterGraphSerializerConfig | None = None,
 ) -> SubtitleRenderResult:
-    plan = build_subtitle_render_plan(request, config)
+    plan = build_subtitle_render_plan(
+        request, config,
+        filter_graph_builder_callable=filter_graph_builder_callable,
+        filter_graph_validator_callable=filter_graph_validator_callable,
+        filter_graph_serializer_callable=filter_graph_serializer_callable,
+        serializer_config=serializer_config,
+    )
 
     if request.output_path.exists():
         if request.output_path.is_dir():
@@ -953,6 +905,10 @@ def execute_subtitle_render_plan(
         temporary_files=[],
         cleanup_result="retained",
         error=None,
+        filter_graph_id=plan.filter_graph_id,
+        filter_graph_validation_passed=plan.filter_graph_validation_passed,
+        serialization_id=plan.serialization_id,
+        output_mode=plan.output_mode,
     )
 
     if config.diagnostics_write_log:

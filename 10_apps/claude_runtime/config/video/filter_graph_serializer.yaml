@@ -1,0 +1,65 @@
+version: "1.0"
+
+# AIKO OS — Filter Graph Serializer (Phase 11F.3)
+#
+# Converts a validated, typed FilterGraph (Phase 11F.2) into real
+# ffmpeg filter syntax: a -vf or -filter_complex expression string,
+# plus escaping and label serialization. Never executes anything,
+# never touches ffmpeg/ffprobe, never probes media, never mutates the
+# FilterGraph it is given, never reorders filters or passes. Escaping
+# and syntax generation for subtitle rendering (drawtext, ass) live
+# here exclusively -- src/subtitle_render_engine.py no longer
+# implements its own copies.
+
+serializer:
+  schema_version: "1.0"
+  renderer: ffmpeg
+  reject_unknown_filters: true
+  allow_custom_passthrough: false
+  prefer_simple_vf: true
+  force_filter_complex: false
+
+labels:
+  allow_stream_labels:
+    - "0:v"
+    - "0:a"
+  generated_label_pattern: "^[A-Za-z][A-Za-z0-9_:-]*$"
+  final_output_label: outv
+  require_single_final_video_output: true
+
+drawtext:
+  filter_name: drawtext
+  preserve_unicode: true
+  preserve_explicit_line_breaks: true
+  escape_percent: true
+  escape_colon: true
+  escape_apostrophe: true
+  escape_backslash: true
+  escape_comma: true
+  escape_semicolon: true
+  escape_brackets: true
+  require_font_file: true
+  # Box rendering is ffmpeg *syntax* -- these mirror the equivalent
+  # fields in config/video/subtitle_render.yaml, now owned here since
+  # this module generates the box=1/boxcolor= syntax.
+  box_enabled_default: false
+  default_box_color: "#00000000"
+  # Pixel margin used when a cue only specifies an anchor (no explicit
+  # x/y) -- mirrors config/video/subtitle_render.yaml's equivalent.
+  anchor_margin_pixels: 40
+
+ass:
+  filter_name: subtitles
+  allow_fontsdir: true
+  allow_force_style: false
+
+enable:
+  allowed_functions:
+    - between
+  allowed_time_variable: t
+  reject_arbitrary_expressions: true
+
+output:
+  write_diagnostics: true
+  diagnostic_suffix: "_filter_graph_serialization.json"
+  atomic_write: true
