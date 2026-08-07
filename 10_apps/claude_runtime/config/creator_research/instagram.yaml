@@ -1,0 +1,100 @@
+# Phase 12B.2 -- Instagram Research Connector configuration.
+#
+# This file configures a READ-ONLY observation connector. It has no
+# credential field -- no username, password, cookie, or token is ever
+# read from this file or written by this package. Login (if any) is
+# always performed manually by a human, in a visible browser, before a
+# live run; see docs/creator_research/instagram_live_research_runbook.md.
+#
+# browser.profile_directory intentionally differs from
+# config/social/instagram.yaml's "browser_profile/instagram" (the
+# reply-production system's own profile) -- two Playwright persistent
+# contexts cannot safely share one user_data_dir concurrently, and
+# keeping research browsing fully isolated from the reply-sending
+# session avoids that failure mode entirely.
+
+version: "1.0"
+
+instagram:
+  connector_version: "12B.2"
+
+  read_only: true
+
+  # What happens when a section's connector method raises an access
+  # signal (access_limited / authentication_required / rate_limited /
+  # challenge_detected): "skip" continues to the next section with a
+  # warning (default); "stop" re-raises, letting
+  # orchestrator.run_job()'s existing fail_fast/required_sections
+  # handling decide the job's outcome.
+  access_limit_behavior: "skip"
+
+  allowed_actions:
+    - navigate
+    - read
+    - scroll
+    - open_public_post
+    - open_public_reel
+    - expand_visible_comments
+    - expand_visible_replies
+
+  forbidden_actions:
+    - follow
+    - unfollow
+    - like
+    - unlike
+    - comment
+    - reply
+    - dm
+    - share
+    - save
+    - publish
+    - edit_profile
+
+limits:
+  max_posts_per_job: 100
+  max_reels_per_job: 50
+  max_comments_per_post: 100
+  max_creator_replies_per_post: 100
+  max_highlight_items: 100
+  max_scroll_rounds_per_section: 50
+
+rate_limit:
+  enabled: true
+  minimum_delay_seconds: 1.5
+  maximum_delay_seconds: 4.0
+  backoff_seconds:
+    - 10
+    - 30
+    - 60
+  max_retries_per_navigation: 2
+
+browser:
+  headless: false
+  reuse_existing_profile: true
+  profile_directory: "browser_profile/creator_research_instagram"
+  page_ready_timeout_seconds: 20
+  selector_timeout_seconds: 10
+  viewport_width: 1280
+  viewport_height: 900
+  locale: "en-US"
+  timezone_id: "UTC"
+
+evidence:
+  save_text: true
+  save_public_metrics: true
+  save_visual_annotations: false
+  preserve_source_url: true
+  preserve_published_at: true
+  preserve_capture_timestamp: true
+
+checkpoint:
+  enabled: true
+  checkpoint_every_items: 10
+  directory: "output/creator_research/instagram/checkpoints"
+
+diagnostics:
+  screenshots_on_error: true
+  save_dom_snippet_on_error: false
+  redact_usernames_in_audience_comments: true
+  directory: "output/creator_research/instagram/diagnostics"
+  screenshots_directory: "output/creator_research/instagram/screenshots"
