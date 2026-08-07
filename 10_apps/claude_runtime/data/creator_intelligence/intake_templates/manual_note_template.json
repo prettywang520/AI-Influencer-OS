@@ -1,0 +1,8 @@
+{
+  "_comment": "Fill in and pass to --add-manual-note. This becomes a plain Evidence(evidence_type=manual_note) record -- evidence_id is computed automatically.",
+  "source_description": "",
+  "content_excerpt": "",
+  "collected_by": "operator",
+  "collected_at": null,
+  "tags": []
+}

@@ -1,0 +1,52 @@
+# Phase 12A.1 -- Creator Evidence Intake configuration.
+# Owns evidence sample-count targets, the intake workspace's
+# subdirectory layout, and where template files are copied from.
+# These are evidence TARGETS, not hard claims and not a quality/
+# confidence measure -- see docs/creator_intelligence/phase_12a1_intake_workflow.md.
+
+intake:
+  schema_version: "1.0"
+
+targets:
+  profile:
+    minimum: 1
+    target: 1
+  grid:
+    minimum: 3
+    target: 3
+  posts:
+    minimum: 20
+    target: 50
+  captions:
+    minimum: 20
+    target: 50
+  creator_replies:
+    minimum: 30
+    target: 100
+  reels:
+    minimum: 10
+    target: 30
+  highlights:
+    minimum: 5
+    target: 5
+  visual_realism:
+    minimum: 12
+    target: 12
+  human_authenticity:
+    minimum: 10
+    target: 10
+  relationships:
+    minimum: 10
+    target: 10
+
+package_directories:
+  - notes
+  - screenshots
+  - captions
+  - replies
+  - reels
+  - highlights
+  - relationships
+  - visual_examples
+
+template_source_dir: "data/creator_intelligence/intake_templates"

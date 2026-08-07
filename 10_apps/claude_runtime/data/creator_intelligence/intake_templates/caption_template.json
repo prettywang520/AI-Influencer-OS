@@ -1,0 +1,12 @@
+{
+  "_comment": "Fill in and pass to --add-caption. caption_id is computed automatically -- do not set it. Preserve the exact text; do not rewrite/summarize it here.",
+  "post_reference": null,
+  "published_at": null,
+  "caption_text": "",
+  "hashtags": [],
+  "mentions": [],
+  "language": null,
+  "manual_tags": [],
+  "metrics_if_known": {},
+  "metadata": {}
+}

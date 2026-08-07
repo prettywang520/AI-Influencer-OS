@@ -1,0 +1,14 @@
+{
+  "_comment": "Fill in and pass to --add-highlight-note. highlight_id is computed automatically -- do not set it. Do not infer story_type/memory_type beyond what the evidence supports.",
+  "highlight_name": "",
+  "item_index": 0,
+  "source_reference": null,
+  "content_type": null,
+  "manual_summary": "",
+  "people_context": null,
+  "location_context": null,
+  "story_type": null,
+  "_story_type_comment": "suggested categories: travel, daily, family, friends, work, fashion, food, memories, childhood, relationships, behind_the_scenes",
+  "memory_type": null,
+  "metadata": {}
+}

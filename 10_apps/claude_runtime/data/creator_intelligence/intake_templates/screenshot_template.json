@@ -1,0 +1,17 @@
+{
+  "_comment": "Fill in and pass to --add-screenshot. evidence_id is computed automatically -- do not set it.",
+  "source_type": "profile_screenshot",
+  "_source_type_comment": "one of: profile_screenshot, grid_screenshot, post_screenshot, carousel_screenshot, reel_screenshot, highlight_screenshot, visual_realism_example, tagged_post_screenshot, collaboration_screenshot, childhood_memory_screenshot, friend_social_context_screenshot, family_depiction_screenshot, daily_life_screenshot, behind_the_scenes_screenshot",
+  "local_path": "screenshots/REPLACE_WITH_FILENAME.png",
+  "original_filename": null,
+  "captured_at": null,
+  "source_url": null,
+  "post_date": null,
+  "caption_reference": null,
+  "manual_notes": "",
+  "visual_annotations": null,
+  "_visual_annotations_comment": "optional -- see visual_realism_template.json fields; only set for source_type=visual_realism_example",
+  "relationship_annotations": [],
+  "_relationship_annotations_comment": "optional list of {role, basis, confidence, description} -- role: friend_like_context|family_depiction|collaboration|public_creator_interaction|unknown_person; basis: presented_narrative|visually_depicted|verified|inferred|unknown; confidence: low|medium|high",
+  "metadata": {}
+}

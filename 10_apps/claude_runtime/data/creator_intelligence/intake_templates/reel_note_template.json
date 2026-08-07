@@ -1,0 +1,32 @@
+{
+  "_comment": "Fill in and pass to --add-reel-note. reel_id is computed automatically -- do not set it. Do not download the video; this records manual observations only.",
+  "source_reference": null,
+  "published_at": null,
+  "duration_seconds_if_known": null,
+  "views_if_known": null,
+  "likes_if_known": null,
+  "comments_if_known": null,
+  "hook_notes": "",
+  "subtitle_notes": "",
+  "music_notes": "",
+  "camera_notes": "",
+  "story_arc_notes": "",
+  "manual_tags": [],
+  "metadata": {},
+  "shot_notes": [
+    {
+      "_comment": "one entry per shot; shot_index must be non-decreasing across the list",
+      "shot_index": 0,
+      "start_seconds_optional": null,
+      "end_seconds_optional": null,
+      "subject_action": "",
+      "camera_angle": "",
+      "camera_motion": "",
+      "environment": "",
+      "emotion": "",
+      "interaction": "",
+      "text_overlay": "",
+      "notes": ""
+    }
+  ]
+}

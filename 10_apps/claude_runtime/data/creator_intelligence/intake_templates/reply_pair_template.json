@@ -1,0 +1,16 @@
+{
+  "_comment": "Fill in and pass to --add-reply-pair. reply_pair_id is computed automatically -- do not set it. audience_username_optional may be left null or redacted.",
+  "post_reference": null,
+  "audience_comment": "",
+  "creator_reply": "",
+  "comment_language": null,
+  "reply_language": null,
+  "comment_timestamp": null,
+  "reply_timestamp": null,
+  "emoji": [],
+  "thread_depth": 0,
+  "audience_username_optional": null,
+  "relationship_context": null,
+  "manual_tags": [],
+  "metadata": {}
+}

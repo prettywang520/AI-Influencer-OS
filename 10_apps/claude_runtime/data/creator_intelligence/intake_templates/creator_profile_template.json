@@ -1,0 +1,16 @@
+{
+  "_comment": "Reference only -- `intake.py --init` builds creator_profile.json from --username/--platform/--profile-url/--display-name CLI flags, not from this file. Shown here so the shape is documented alongside the other templates.",
+  "creator_id": "computed automatically from platform+username",
+  "platform": "instagram",
+  "username": "",
+  "profile_url": "",
+  "display_name": null,
+  "bio": null,
+  "category": null,
+  "region": null,
+  "languages": [],
+  "analysis_start_date": null,
+  "analysis_end_date": null,
+  "notes": "",
+  "metadata": {}
+}
