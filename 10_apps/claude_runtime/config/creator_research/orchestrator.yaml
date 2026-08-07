@@ -1,0 +1,17 @@
+# Phase 12B.1 -- Creator Research Orchestrator configuration.
+# Owns only run_job()'s failure policy -- no platform/connector
+# settings live here (a connector is looked up by name at call time,
+# never configured here).
+
+orchestrator:
+  schema_version: "1.0"
+  # If true, a single failed section aborts the job immediately
+  # (-> FAILED). If false (default), the job continues collecting the
+  # remaining sections -- partial results are still useful for
+  # research -- and only fails at the end if a required section never
+  # produced evidence.
+  fail_fast: false
+  # Sections that must have produced at least one Evidence item for
+  # the job to reach COMPLETE.
+  required_sections:
+    - profile

@@ -1,0 +1,9 @@
+# Phase 12B.1 -- Creator Research Session configuration.
+# ResearchSession is a plain runtime container (job + progress +
+# connector + statistics + warnings) with no operational policy of
+# its own yet -- this file exists to match the established
+# one-config-per-module convention and reserves a place for future
+# session-level settings.
+
+session:
+  schema_version: "1.0"

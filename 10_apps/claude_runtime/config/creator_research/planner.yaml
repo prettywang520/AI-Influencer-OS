@@ -1,0 +1,12 @@
+# Phase 12B.1 -- Creator Research Planner configuration.
+# The canonical section order and section->state mapping are defined
+# in code (planner.py's SECTION_STATE_MAP) since they encode a fixed
+# structural relationship with state.py's JobStatus, not an
+# operational policy that should be edited without a code review.
+# This file owns only the retry policy.
+
+planner:
+  schema_version: "1.0"
+
+retry:
+  max_attempts: 3

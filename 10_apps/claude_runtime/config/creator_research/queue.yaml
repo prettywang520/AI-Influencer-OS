@@ -1,0 +1,9 @@
+# Phase 12B.1 -- Creator Research Queue configuration.
+
+queue:
+  schema_version: "1.0"
+  # Relative to the runtime root (10_apps/claude_runtime). Under
+  # output/, which is gitignored -- real job/queue data is never
+  # auto-tracked by git.
+  default_queue_path: "output/creator_research/queue.json"
+  max_attempts: 3
