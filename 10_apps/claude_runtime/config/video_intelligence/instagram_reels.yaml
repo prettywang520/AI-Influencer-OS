@@ -1,0 +1,37 @@
+# Phase 12D.1 -- Instagram Reels Learning Adapter configuration.
+# No creator-specific configuration lives here -- this file governs
+# sampling/priority/knowledge policy only, shared across every
+# creator/persona this adapter is ever pointed at.
+
+version: "1.0"
+
+adapter:
+  schema_version: "1.0"
+  adapter_version: "12D.1"
+  platform: instagram_reels
+
+sampling:
+  minimum_reels_for_dna: 10
+  recommended_reels: 30
+  strong_sample: 50
+  deterministic: true
+
+priorities:
+  hook: 1.0
+  speech: 1.0
+  lip_sync: 1.0
+  gesture: 0.9
+  camera: 0.9
+  framing: 0.8
+  pacing: 1.0
+  editing: 1.0
+  subtitles: 0.9
+  audio: 0.8
+  storytelling: 1.0
+  cta: 0.9
+  emotion: 0.8
+
+knowledge:
+  deidentify_creator: true
+  preserve_verbatim_scripts: false
+  minimum_pattern_corroboration: 2
