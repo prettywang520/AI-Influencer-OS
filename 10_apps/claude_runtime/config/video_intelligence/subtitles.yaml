@@ -1,0 +1,19 @@
+# Phase 12D.0 -- Video Intelligence subtitle vocabulary.
+# Owns the recognized style/position vocabulary subtitles.py surfaces
+# through TraitScore.rationale. Purely observational about a reference
+# video's on-screen captions -- unrelated to, and never importing,
+# the production-side subtitle_engine.py/subtitle_render_engine.py.
+
+subtitles:
+  schema_version: "1.0"
+  style_types:
+    - bold_caption
+    - karaoke_highlight
+    - minimal
+    - handwritten
+    - meme_style
+  position_types:
+    - top
+    - center
+    - bottom
+    - dynamic

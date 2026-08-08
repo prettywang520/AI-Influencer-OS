@@ -1,0 +1,18 @@
+# Phase 12D.0 -- Video Intelligence hook vocabulary.
+# Owns only the recognized hook_type vocabulary hook.py surfaces
+# through TraitScore.rationale when an evidence tag matches one of
+# these values -- it does not gate/validate anything (an
+# unrecognized tag is simply not surfaced, never an error).
+
+hook:
+  schema_version: "1.0"
+  hook_types:
+    - question
+    - shock
+    - relatable
+    - controversial
+    - promise
+    - bold_statement
+    - pattern_interrupt
+    - visual_cold_open
+    - other

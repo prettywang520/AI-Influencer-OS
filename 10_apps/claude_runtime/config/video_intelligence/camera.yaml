@@ -1,0 +1,33 @@
+# Phase 12D.0 -- Video Intelligence camera vocabulary.
+# Owns the recognized distance/angle/lens-feeling/equipment vocabulary
+# camera.py surfaces through TraitScore.rationale. Composition/subject
+# placement is deliberately scored by the separate framing.py analyzer
+# (see docs/video_intelligence/dna.md) even though the task's own
+# CAMERA section also mentions "Composition."
+
+camera:
+  schema_version: "1.0"
+  distance_types:
+    - extreme_close_up
+    - close_up
+    - medium
+    - wide
+    - extreme_wide
+  angle_types:
+    - eye_level
+    - high_angle
+    - low_angle
+    - dutch_angle
+    - overhead
+  lens_feeling_types:
+    - natural
+    - wide_angle_distortion
+    - telephoto_compression
+    - cinematic
+  equipment_types:
+    - handheld
+    - tripod
+    - gimbal
+    - tracking
+    - selfie
+    - friend_shot

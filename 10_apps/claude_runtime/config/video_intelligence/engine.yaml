@@ -1,0 +1,41 @@
+# Phase 12D.0 -- Video Intelligence Engine configuration.
+# Owns confidence thresholds, per-analyzer scoring weights, and
+# excerpt/limit policy -- the same shape as
+# config/creator_intelligence/framework.yaml.
+
+video_intelligence:
+  schema_version: "1.0"
+
+output:
+  # Relative to the runtime root (10_apps/claude_runtime). Under
+  # output/, which is gitignored -- real video-analysis data is never
+  # auto-tracked by git.
+  root_directory: "output/video_intelligence"
+
+confidence:
+  # Minimum number of distinct evidence items backing a trait before
+  # its confidence can rise above LOW.
+  min_evidence_for_medium: 2
+  min_evidence_for_high: 4
+  # Minimum number of *independently sourced* corroborating items
+  # before a trait may be marked VERIFIED.
+  min_corroboration_for_verified: 2
+
+evidence:
+  # Excerpts are capped to stay copyright-respecting.
+  excerpt_max_chars: 280
+
+analyzer_weights:
+  hook: 1.0
+  pacing: 1.0
+  speech: 1.0
+  lipsync: 1.0
+  gesture: 1.0
+  camera: 1.0
+  framing: 1.0
+  editing: 1.0
+  subtitles: 1.0
+  audio: 1.0
+  storytelling: 1.0
+  cta: 1.0
+  emotion: 1.0

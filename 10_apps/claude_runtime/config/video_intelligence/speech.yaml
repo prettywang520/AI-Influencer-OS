@@ -1,0 +1,29 @@
+# Phase 12D.0 -- Video Intelligence speech vocabulary.
+# Owns the recognized language/speed/energy/question-style vocabulary
+# speech.py surfaces through TraitScore.rationale.
+
+speech:
+  schema_version: "1.0"
+  languages:
+    - cantonese
+    - mandarin
+    - english
+    - japanese
+    - mixed
+    - other
+  speed_types:
+    - very_slow
+    - slow
+    - moderate
+    - fast
+    - very_fast
+  energy_types:
+    - low
+    - warm
+    - energetic
+    - intense
+  question_style_types:
+    - rhetorical
+    - direct
+    - conversational
+    - none

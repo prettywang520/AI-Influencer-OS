@@ -1,0 +1,20 @@
+# Phase 12D.0 -- Video Intelligence pacing vocabulary.
+# Owns the recognized tempo/rhythm vocabulary pacing.py surfaces
+# through TraitScore.rationale. pacing.py measures overall rhythm/
+# tempo as a "meta" trait; editing.py catalogs the concrete cut/zoom/
+# transition techniques that produce it -- deliberately complementary,
+# not duplicated (see docs/video_intelligence/dna.md).
+
+pacing:
+  schema_version: "1.0"
+  tempo_types:
+    - very_fast
+    - fast
+    - medium
+    - slow
+    - very_slow
+  rhythm_types:
+    - consistent
+    - varied
+    - accelerating
+    - decelerating
