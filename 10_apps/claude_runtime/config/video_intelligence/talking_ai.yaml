@@ -1,0 +1,67 @@
+# Phase 12D.2 -- Talking AI Intelligence configuration.
+# Owns timing tolerances, sample-size gates, the naturalness-dimension
+# list, and knowledge-base de-identification policy. Sibling of
+# config/video_intelligence/engine.yaml -- talking_ai/ is a separate
+# package with its own config, never a section bolted onto engine.yaml.
+
+talking_ai:
+  schema_version: "1.0"
+  engine_version: "1.0.0"
+
+timing:
+  # The widest gap between a reference event (speech onset/offset,
+  # emphasis window, pause window) and a nearby observation that still
+  # counts as "aligned" rather than "delayed"/"early".
+  maximum_reasonable_sync_latency_seconds: 0.5
+  # Minimum SpeechSegment.pause_before/after duration to be treated as
+  # a pause window at all (shorter gaps are ordinary word spacing, not
+  # a pause).
+  pause_min_seconds: 0.3
+
+sample_size:
+  # Below this many independently sourced talking videos, a knowledge-
+  # base pattern or recommended range is never derived at all.
+  minimum_talking_videos: 1
+  recommended_talking_videos: 5
+  strong_sample: 15
+
+naturalness:
+  # The 10 naturalness dimensions naturalness.py aggregates (task
+  # §15's own spelling -- see talking_ai/models.py's
+  # NATURALNESS_DIMENSION_ALIASES for the DNA-field-name mapping).
+  dimensions:
+    - speech_rhythm
+    - lip_sync
+    - pause_behavior
+    - blink_variability
+    - gaze_variability
+    - head_micro_motion
+    - facial_micro_motion
+    - gesture_speech_sync
+    - subtitle_sync
+    - camera_naturalness
+
+knowledge:
+  # Minimum number of independent supporting videos before a
+  # knowledge-base pattern or a §18 recommended range may be derived
+  # at all -- reused for both gates, one shared "never trust a single
+  # sample" concept.
+  minimum_pattern_corroboration: 2
+  deidentify_source: true
+  preserve_verbatim_transcripts: false
+
+output:
+  # Relative to the runtime root (10_apps/claude_runtime). Under
+  # output/, which is gitignored -- real analysis data is never
+  # auto-tracked by git.
+  root_directory: "output/video_intelligence/talking_ai"
+
+# Not part of the task's own suggested shape for this file (which has
+# no confidence section at all) -- added here as a natural, additive
+# completion, the same confidence-threshold shape every other
+# engine.yaml in this codebase already carries, since
+# compute_confidence_level() requires these thresholds.
+confidence:
+  min_evidence_for_medium: 2
+  min_evidence_for_high: 4
+  min_corroboration_for_verified: 2
