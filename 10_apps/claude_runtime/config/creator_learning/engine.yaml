@@ -1,0 +1,15 @@
+# Phase 12C.0 -- Creator Learning Engine configuration.
+# No credentials, no per-creator data, no live-network settings live here --
+# this engine never opens a browser itself.
+
+learning:
+  schema_version: "1.0"
+
+knowledge_base:
+  # Relative to 10_apps/claude_runtime/. Gitignored, same as the rest of output/.
+  root_directory: "output/creator_learning"
+
+reports:
+  formats:
+    - markdown
+  generate_on_every_session: true
