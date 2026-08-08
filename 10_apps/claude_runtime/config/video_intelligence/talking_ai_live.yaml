@@ -1,0 +1,44 @@
+# Phase 12D.3 -- Talking AI Live Learning Adapter configuration.
+# Task's own suggested shape (§20), used verbatim. Sibling of
+# config/video_intelligence/talking_ai.yaml -- live/ is a separate
+# package with its own config, never a section bolted onto that file.
+
+version: "1.0"
+
+adapter:
+  schema_version: "1.0"
+  adapter_version: "12D.3"
+  source_platform: instagram_reels
+
+sampling:
+  minimum_talking_reels: 5
+  recommended_talking_reels: 15
+  strong_sample: 30
+  deterministic: true
+
+evidence:
+  allow_sparse_timeline: true
+  require_exact_timestamps: false
+  preserve_source_references: true
+
+knowledge:
+  deidentify_source: true
+  preserve_verbatim_transcripts: false
+  preserve_creator_username: false
+
+live:
+  # Governs a FUTURE live run only -- nothing in this phase reads
+  # these keys to open a browser or make a network call. See
+  # docs/video_intelligence/talking_ai_live_runbook.md.
+  enabled_by_default: false
+  require_explicit_authorization: true
+
+output:
+  # Relative to the runtime root (10_apps/claude_runtime). Under
+  # output/, which is gitignored -- real analysis data is never
+  # auto-tracked by git.
+  root_directory: "output/video_intelligence/talking_ai/live"
+
+# No creator-specific rules anywhere in this file (task's own explicit
+# requirement) -- shared across any future talking-AI persona's
+# reference-account research.
