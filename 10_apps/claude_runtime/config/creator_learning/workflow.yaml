@@ -1,0 +1,12 @@
+# Phase 12C.0.1 -- Creator Learning Workflow configuration.
+# No credentials, no per-creator data, no live-network settings live
+# here -- the workflow layer never opens a browser itself; a Connector
+# can only be supplied by a direct Python caller of
+# WorkflowRunner.start(), never by this config or by workflow_cli.py.
+
+workflow:
+  schema_version: "1.0"
+  # How many times retry() may reset a FAILED workflow before
+  # WorkflowRetryLimitExceededError is raised.
+  max_retry_attempts: 3
+  generate_reports_on_completion: true
